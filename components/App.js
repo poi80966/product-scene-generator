@@ -25,7 +25,7 @@ export default function App() {
   const fileRef = useRef();
 
   const REPLICATE_KEY = process.env.NEXT_PUBLIC_REPLICATE_KEY;
-  const ANTHROPIC_KEY = process.env.NEXT_PUBLIC_ANTHROPIC_KEY;
+  const GEMINI_KEY = process.env.NEXT_PUBLIC_GEMINI_KEY;
 
   const handleFile = useCallback((file) => {
     if (!file || !file.type.startsWith("image/")) return;
@@ -55,29 +55,28 @@ export default function App() {
     setErrorMsg("");
 
     try {
+      // Step 1: Gemini analyzes product (free tier)
       const sceneNote = selectedScene
         ? `用戶指定場景：「${SCENES.find(s => s.id === selectedScene)?.label}」（${SCENES.find(s => s.id === selectedScene)?.desc}）。`
         : "請根據商品自動選擇最適合場景。";
 
-      const claudeRes = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": ANTHROPIC_KEY,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          messages: [{
-            role: "user",
-            content: [
-              { type: "image", source: { type: "base64", media_type: imageMediaType, data: imageBase64 } },
-              {
-                type: "text",
-                text: `你是電商商品攝影師，專注居家類產品（時鐘、盆栽等）。
-分析這個商品，輸出 JSON（只輸出 JSON，不要其他文字）：
+      const geminiRes = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{
+              parts: [
+                {
+                  inline_data: {
+                    mime_type: imageMediaType,
+                    data: imageBase64,
+                  }
+                },
+                {
+                  text: `你是電商商品攝影師，專注居家類產品（時鐘、盆栽等）。
+分析這個商品，只輸出 JSON，不要其他文字或 markdown：
 {
   "product_type": "商品類型",
   "matched_scene": "場景名稱（中文）",
@@ -85,19 +84,22 @@ export default function App() {
   "prompt": "英文圖像生成 prompt，描述商品放在場景中的完整畫面，包含商品顏色材質、場景道具、燈光方向、整體氛圍，至少60字，結尾加：professional product photography, high quality, 8k, commercial"
 }
 ${sceneNote}`
-              }
-            ]
-          }]
-        })
-      });
+                }
+              ]
+            }],
+            generationConfig: { temperature: 0.4 }
+          })
+        }
+      );
 
-      const claudeData = await claudeRes.json();
-      const text = claudeData.content?.map(c => c.text || "").join("") || "";
-      const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
+      const geminiData = await geminiRes.json();
+      const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      const cleaned = rawText.replace(/```json|```/g, "").trim();
+      const parsed = JSON.parse(cleaned);
       setAnalysis(parsed);
       setStep(STEP.GENERATING);
 
-      // Replicate: flux-schnell
+      // Step 2: Replicate flux-schnell generates image
       const replicateRes = await fetch("https://api.replicate.com/v1/models/black-forest-labs/flux-schnell/predictions", {
         method: "POST",
         headers: {
