@@ -90,7 +90,7 @@ export default function App() {
                 { inline_data: { mime_type: imageMediaType, data: imageBase64 } },
                 {
                   text: `你是電商商品攝影師。分析這個商品圖片，只輸出純 JSON，不要任何說明文字或 markdown：
-{"product_type":"商品類型","matched_scene":"場景名稱","scene_reason":"原因","prompt":"Keep the product exactly as shown, place it in [scene description]. Describe the background scene in detail: specific props, lighting direction, atmosphere, textures. At least 60 words. End with: professional product photography, high quality, 8k, commercial photography"}
+{"product_type":"商品類型","matched_scene":"場景名稱","scene_reason":"原因","prompt":"Keep the product exactly as shown with its original colors, materials, and surface texture completely unchanged. Place it in [scene description]. Describe only the background: props, lighting, atmosphere. Do NOT alter the product appearance. At least 60 words. End with: professional product photography, high quality, 8k, commercial photography, preserve product details"}
 ${sceneNote}`
                 }
               ]
