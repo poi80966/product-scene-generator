@@ -3,7 +3,7 @@ export async function POST(request) {
   const REPLICATE_KEY = process.env.REPLICATE_KEY;
 
   if (body.action === "create") {
-    const res = await fetch("https://api.replicate.com/v1/models/black-forest-labs/flux-kontext-pro/predictions", {
+    const res = await fetch("https://api.replicate.com/v1/models/black-forest-labs/flux-kontext-max/predictions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
