@@ -10,6 +10,7 @@ const SCENES = [
 ];
 
 const STEP = { IDLE: "idle", ANALYZING: "analyzing", GENERATING: "generating", DONE: "done", ERROR: "error" };
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 export default function App() {
   const [image, setImage] = useState(null);
@@ -23,7 +24,7 @@ export default function App() {
   const [errorMsg, setErrorMsg] = useState("");
   const fileRef = useRef();
 
-  const FAL_KEY = process.env.NEXT_PUBLIC_FAL_KEY;
+  const REPLICATE_KEY = process.env.NEXT_PUBLIC_REPLICATE_KEY;
   const ANTHROPIC_KEY = process.env.NEXT_PUBLIC_ANTHROPIC_KEY;
 
   const handleFile = useCallback((file) => {
@@ -81,7 +82,7 @@ export default function App() {
   "product_type": "商品類型",
   "matched_scene": "場景名稱（中文）",
   "scene_reason": "選擇原因（10字內）",
-  "prompt": "英文圖像生成 prompt，包含商品顏色材質、場景道具、燈光、氛圍，至少60字"
+  "prompt": "英文圖像生成 prompt，描述商品放在場景中的完整畫面，包含商品顏色材質、場景道具、燈光方向、整體氛圍，至少60字，結尾加：professional product photography, high quality, 8k, commercial"
 }
 ${sceneNote}`
               }
@@ -94,29 +95,46 @@ ${sceneNote}`
       const text = claudeData.content?.map(c => c.text || "").join("") || "";
       const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
       setAnalysis(parsed);
-
       setStep(STEP.GENERATING);
 
-      const falRes = await fetch("https://fal.run/fal-ai/flux/schnell", {
+      // Replicate: flux-schnell
+      const replicateRes = await fetch("https://api.replicate.com/v1/models/black-forest-labs/flux-schnell/predictions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Key ${FAL_KEY}`,
+          "Authorization": `Bearer ${REPLICATE_KEY}`,
         },
         body: JSON.stringify({
-          prompt: parsed.prompt,
-          image_size: "square_hd",
-          num_inference_steps: 4,
-          num_images: 1,
+          input: {
+            prompt: parsed.prompt,
+            go_fast: true,
+            num_outputs: 1,
+            aspect_ratio: "1:1",
+            output_format: "jpg",
+            output_quality: 90,
+          }
         }),
       });
 
-      const falData = await falRes.json();
-      if (falData.images?.[0]?.url) {
-        setGeneratedImage(falData.images[0].url);
+      const prediction = await replicateRes.json();
+      if (!prediction.id) throw new Error(prediction.detail || "無法建立生成任務");
+
+      let result = prediction;
+      let attempts = 0;
+      while (result.status !== "succeeded" && result.status !== "failed" && attempts < 60) {
+        await sleep(2000);
+        const pollRes = await fetch(`https://api.replicate.com/v1/predictions/${result.id}`, {
+          headers: { "Authorization": `Bearer ${REPLICATE_KEY}` }
+        });
+        result = await pollRes.json();
+        attempts++;
+      }
+
+      if (result.status === "succeeded" && result.output?.[0]) {
+        setGeneratedImage(result.output[0]);
         setStep(STEP.DONE);
       } else {
-        throw new Error(falData.detail || falData.error || "圖片生成失敗");
+        throw new Error(result.error || "圖片生成失敗");
       }
     } catch (err) {
       setErrorMsg(err.message);
@@ -125,20 +143,15 @@ ${sceneNote}`
   };
 
   const reset = () => {
-    setImage(null);
-    setImageBase64(null);
-    setAnalysis(null);
-    setGeneratedImage(null);
-    setStep(STEP.IDLE);
-    setSelectedScene(null);
-    setErrorMsg("");
+    setImage(null); setImageBase64(null); setAnalysis(null);
+    setGeneratedImage(null); setStep(STEP.IDLE);
+    setSelectedScene(null); setErrorMsg("");
   };
 
   const canRun = image && step !== STEP.ANALYZING && step !== STEP.GENERATING;
 
   return (
     <div style={{ minHeight: "100vh", background: "#f7f4ef", fontFamily: "Georgia, serif", color: "#2c2a27" }}>
-      {/* Header */}
       <div style={{ background: "#2c2a27", color: "#f7f4ef", padding: "24px 40px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
           <div style={{ fontSize: 10, letterSpacing: 4, opacity: 0.4, marginBottom: 4, textTransform: "uppercase" }}>AI 電商工作流</div>
@@ -149,8 +162,6 @@ ${sceneNote}`
 
       <div style={{ maxWidth: 1000, margin: "0 auto", padding: "40px 24px" }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32 }}>
-
-          {/* LEFT */}
           <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
             <div>
               <div style={{ fontSize: 10, letterSpacing: 3, opacity: 0.4, marginBottom: 10, textTransform: "uppercase" }}>01 — 上傳商品照片</div>
@@ -159,13 +170,7 @@ ${sceneNote}`
                 onDragOver={e => { e.preventDefault(); setDragOver(true); }}
                 onDragLeave={() => setDragOver(false)}
                 onDrop={handleDrop}
-                style={{
-                  border: `2px dashed ${dragOver ? "#8b7355" : "#c8bfb0"}`,
-                  borderRadius: 4, minHeight: 240, display: "flex",
-                  alignItems: "center", justifyContent: "center",
-                  cursor: "pointer", background: dragOver ? "#ede8e0" : "#faf8f5",
-                  transition: "all 0.2s", overflow: "hidden",
-                }}
+                style={{ border: `2px dashed ${dragOver ? "#8b7355" : "#c8bfb0"}`, borderRadius: 4, minHeight: 240, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", background: dragOver ? "#ede8e0" : "#faf8f5", transition: "all 0.2s", overflow: "hidden" }}
               >
                 {image
                   ? <img src={image} alt="product" style={{ width: "100%", height: 240, objectFit: "contain", padding: 12 }} />
@@ -182,39 +187,22 @@ ${sceneNote}`
               <div style={{ fontSize: 10, letterSpacing: 3, opacity: 0.4, marginBottom: 10, textTransform: "uppercase" }}>02 — 場景風格（可略）</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                 {SCENES.map(sc => (
-                  <button key={sc.id} onClick={() => setSelectedScene(selectedScene === sc.id ? null : sc.id)} style={{
-                    padding: "7px 13px",
-                    border: `1.5px solid ${selectedScene === sc.id ? "#8b7355" : "#c8bfb0"}`,
-                    borderRadius: 2,
-                    background: selectedScene === sc.id ? "#8b7355" : "transparent",
-                    color: selectedScene === sc.id ? "#fff" : "#2c2a27",
-                    fontSize: 12, cursor: "pointer", transition: "all 0.15s",
-                  }}>
+                  <button key={sc.id} onClick={() => setSelectedScene(selectedScene === sc.id ? null : sc.id)} style={{ padding: "7px 13px", border: `1.5px solid ${selectedScene === sc.id ? "#8b7355" : "#c8bfb0"}`, borderRadius: 2, background: selectedScene === sc.id ? "#8b7355" : "transparent", color: selectedScene === sc.id ? "#fff" : "#2c2a27", fontSize: 12, cursor: "pointer", transition: "all 0.15s" }}>
                     {sc.emoji} {sc.label}
                   </button>
                 ))}
               </div>
             </div>
 
-            <button onClick={run} disabled={!canRun} style={{
-              padding: "16px", border: "none", borderRadius: 2,
-              background: !canRun ? "#c8bfb0" : "#2c2a27",
-              color: "#f7f4ef", fontSize: 12, letterSpacing: 2,
-              textTransform: "uppercase", cursor: !canRun ? "not-allowed" : "pointer",
-            }}>
+            <button onClick={run} disabled={!canRun} style={{ padding: "16px", border: "none", borderRadius: 2, background: !canRun ? "#c8bfb0" : "#2c2a27", color: "#f7f4ef", fontSize: 12, letterSpacing: 2, textTransform: "uppercase", cursor: !canRun ? "not-allowed" : "pointer" }}>
               {step === STEP.ANALYZING ? "🔍 分析商品中..." : step === STEP.GENERATING ? "🎨 生成圖片中..." : "✦ 開始生成商品圖"}
             </button>
 
             {step === STEP.DONE && (
-              <button onClick={reset} style={{
-                padding: "14px", border: "1.5px solid #c8bfb0", borderRadius: 2,
-                background: "transparent", fontSize: 12, letterSpacing: 2,
-                textTransform: "uppercase", cursor: "pointer", color: "#2c2a27",
-              }}>↺ 重新上傳</button>
+              <button onClick={reset} style={{ padding: "14px", border: "1.5px solid #c8bfb0", borderRadius: 2, background: "transparent", fontSize: 12, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer", color: "#2c2a27" }}>↺ 重新上傳</button>
             )}
           </div>
 
-          {/* RIGHT */}
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <div style={{ fontSize: 10, letterSpacing: 3, opacity: 0.4, textTransform: "uppercase" }}>03 — 生成結果</div>
 
@@ -228,9 +216,7 @@ ${sceneNote}`
             {(step === STEP.ANALYZING || step === STEP.GENERATING) && (
               <div style={{ background: "#faf8f5", border: "1.5px solid #e8e0d5", borderRadius: 4, minHeight: 400, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16 }}>
                 <div style={{ width: 36, height: 36, border: "2px solid #e8e0d5", borderTop: "2px solid #8b7355", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
-                <div style={{ fontSize: 12, letterSpacing: 2, opacity: 0.5 }}>
-                  {step === STEP.ANALYZING ? "ANALYZING PRODUCT..." : "GENERATING IMAGE..."}
-                </div>
+                <div style={{ fontSize: 12, letterSpacing: 2, opacity: 0.5 }}>{step === STEP.ANALYZING ? "ANALYZING PRODUCT..." : "GENERATING IMAGE..."}</div>
                 {analysis && step === STEP.GENERATING && (
                   <div style={{ textAlign: "center", fontSize: 12, opacity: 0.6 }}>
                     <div style={{ fontWeight: 600, marginBottom: 4 }}>{analysis.product_type}</div>
@@ -251,22 +237,12 @@ ${sceneNote}`
                     <div style={{ fontSize: 10, letterSpacing: 2, opacity: 0.4, marginBottom: 8, textTransform: "uppercase" }}>AI 分析</div>
                     <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>{analysis.product_type}</div>
                     <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 10 }}>場景：{analysis.matched_scene} — {analysis.scene_reason}</div>
-                    <div style={{ background: "#2c2a27", color: "#b8d4b0", borderRadius: 2, padding: "10px 12px", fontSize: 10, lineHeight: 1.7, fontFamily: "monospace" }}>
-                      {analysis.prompt}
-                    </div>
+                    <div style={{ background: "#2c2a27", color: "#b8d4b0", borderRadius: 2, padding: "10px 12px", fontSize: 10, lineHeight: 1.7, fontFamily: "monospace" }}>{analysis.prompt}</div>
                   </div>
                 )}
                 <div style={{ display: "flex", gap: 8 }}>
-                  <a href={generatedImage} download="product-scene.jpg" style={{
-                    flex: 1, textAlign: "center", textDecoration: "none", display: "block",
-                    padding: "12px", background: "#8b7355", color: "#fff",
-                    borderRadius: 2, fontSize: 11, letterSpacing: 2, textTransform: "uppercase",
-                  }}>↓ 下載圖片</a>
-                  <button onClick={() => navigator.clipboard.writeText(analysis?.prompt || "")} style={{
-                    flex: 1, padding: "12px", border: "1.5px solid #c8bfb0", borderRadius: 2,
-                    background: "transparent", fontSize: 11, letterSpacing: 2,
-                    textTransform: "uppercase", cursor: "pointer", color: "#2c2a27",
-                  }}>⊕ 複製 Prompt</button>
+                  <a href={generatedImage} target="_blank" rel="noreferrer" style={{ flex: 1, textAlign: "center", textDecoration: "none", display: "block", padding: "12px", background: "#8b7355", color: "#fff", borderRadius: 2, fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }}>↓ 下載圖片</a>
+                  <button onClick={() => navigator.clipboard.writeText(analysis?.prompt || "")} style={{ flex: 1, padding: "12px", border: "1.5px solid #c8bfb0", borderRadius: 2, background: "transparent", fontSize: 11, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer", color: "#2c2a27" }}>⊕ 複製 Prompt</button>
                 </div>
               </>
             )}
