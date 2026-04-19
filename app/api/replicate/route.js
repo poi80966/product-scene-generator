@@ -9,7 +9,7 @@ export async function POST(request) {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${REPLICATE_KEY}`,
       },
-      body: JSON.stringify({ input: body.input }),
+      body: JSON.stringify({ input: { ...body.input, prompt_upsampling: false } }),
     });
     const data = await res.json();
     return Response.json(data);
