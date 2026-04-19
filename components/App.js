@@ -1,0 +1,286 @@
+"use client";
+import { useState, useRef, useCallback } from "react";
+
+const SCENES = [
+  { id: "nordic", label: "北歐極簡", emoji: "🪵", desc: "原木桌面、白牆、自然光" },
+  { id: "japandi", label: "日系侘寂", emoji: "🍵", desc: "竹簾、麻布、陶器搭配" },
+  { id: "modern", label: "現代輕奢", emoji: "✨", desc: "大理石、金屬光澤、柔光" },
+  { id: "outdoor", label: "戶外自然", emoji: "🌿", desc: "窗台陽光、植物圍繞" },
+  { id: "cafe", label: "咖啡廳風", emoji: "☕", desc: "木質桌面、暖燈、書本" },
+];
+
+const STEP = { IDLE: "idle", ANALYZING: "analyzing", GENERATING: "generating", DONE: "done", ERROR: "error" };
+
+export default function App() {
+  const [image, setImage] = useState(null);
+  const [imageBase64, setImageBase64] = useState(null);
+  const [imageMediaType, setImageMediaType] = useState("image/jpeg");
+  const [selectedScene, setSelectedScene] = useState(null);
+  const [step, setStep] = useState(STEP.IDLE);
+  const [analysis, setAnalysis] = useState(null);
+  const [generatedImage, setGeneratedImage] = useState(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+  const fileRef = useRef();
+
+  const FAL_KEY = process.env.NEXT_PUBLIC_FAL_KEY;
+  const ANTHROPIC_KEY = process.env.NEXT_PUBLIC_ANTHROPIC_KEY;
+
+  const handleFile = useCallback((file) => {
+    if (!file || !file.type.startsWith("image/")) return;
+    setImage(URL.createObjectURL(file));
+    setAnalysis(null);
+    setGeneratedImage(null);
+    setStep(STEP.IDLE);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setImageBase64(e.target.result.split(",")[1]);
+      setImageMediaType(file.type || "image/jpeg");
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    handleFile(e.dataTransfer.files[0]);
+  };
+
+  const run = async () => {
+    if (!imageBase64) return;
+    setStep(STEP.ANALYZING);
+    setAnalysis(null);
+    setGeneratedImage(null);
+    setErrorMsg("");
+
+    try {
+      const sceneNote = selectedScene
+        ? `用戶指定場景：「${SCENES.find(s => s.id === selectedScene)?.label}」（${SCENES.find(s => s.id === selectedScene)?.desc}）。`
+        : "請根據商品自動選擇最適合場景。";
+
+      const claudeRes = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": ANTHROPIC_KEY,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 1000,
+          messages: [{
+            role: "user",
+            content: [
+              { type: "image", source: { type: "base64", media_type: imageMediaType, data: imageBase64 } },
+              {
+                type: "text",
+                text: `你是電商商品攝影師，專注居家類產品（時鐘、盆栽等）。
+分析這個商品，輸出 JSON（只輸出 JSON，不要其他文字）：
+{
+  "product_type": "商品類型",
+  "matched_scene": "場景名稱（中文）",
+  "scene_reason": "選擇原因（10字內）",
+  "prompt": "英文圖像生成 prompt，包含商品顏色材質、場景道具、燈光、氛圍，至少60字"
+}
+${sceneNote}`
+              }
+            ]
+          }]
+        })
+      });
+
+      const claudeData = await claudeRes.json();
+      const text = claudeData.content?.map(c => c.text || "").join("") || "";
+      const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
+      setAnalysis(parsed);
+
+      setStep(STEP.GENERATING);
+
+      const falRes = await fetch("https://fal.run/fal-ai/flux/schnell", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Key ${FAL_KEY}`,
+        },
+        body: JSON.stringify({
+          prompt: parsed.prompt,
+          image_size: "square_hd",
+          num_inference_steps: 4,
+          num_images: 1,
+        }),
+      });
+
+      const falData = await falRes.json();
+      if (falData.images?.[0]?.url) {
+        setGeneratedImage(falData.images[0].url);
+        setStep(STEP.DONE);
+      } else {
+        throw new Error(falData.detail || falData.error || "圖片生成失敗");
+      }
+    } catch (err) {
+      setErrorMsg(err.message);
+      setStep(STEP.ERROR);
+    }
+  };
+
+  const reset = () => {
+    setImage(null);
+    setImageBase64(null);
+    setAnalysis(null);
+    setGeneratedImage(null);
+    setStep(STEP.IDLE);
+    setSelectedScene(null);
+    setErrorMsg("");
+  };
+
+  const canRun = image && step !== STEP.ANALYZING && step !== STEP.GENERATING;
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#f7f4ef", fontFamily: "Georgia, serif", color: "#2c2a27" }}>
+      {/* Header */}
+      <div style={{ background: "#2c2a27", color: "#f7f4ef", padding: "24px 40px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div>
+          <div style={{ fontSize: 10, letterSpacing: 4, opacity: 0.4, marginBottom: 4, textTransform: "uppercase" }}>AI 電商工作流</div>
+          <div style={{ fontSize: 20, letterSpacing: 1 }}>商品場景生成器</div>
+        </div>
+        <div style={{ fontSize: 11, opacity: 0.4, letterSpacing: 1 }}>居家 · 時鐘 · 盆栽</div>
+      </div>
+
+      <div style={{ maxWidth: 1000, margin: "0 auto", padding: "40px 24px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32 }}>
+
+          {/* LEFT */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            <div>
+              <div style={{ fontSize: 10, letterSpacing: 3, opacity: 0.4, marginBottom: 10, textTransform: "uppercase" }}>01 — 上傳商品照片</div>
+              <div
+                onClick={() => fileRef.current.click()}
+                onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={handleDrop}
+                style={{
+                  border: `2px dashed ${dragOver ? "#8b7355" : "#c8bfb0"}`,
+                  borderRadius: 4, minHeight: 240, display: "flex",
+                  alignItems: "center", justifyContent: "center",
+                  cursor: "pointer", background: dragOver ? "#ede8e0" : "#faf8f5",
+                  transition: "all 0.2s", overflow: "hidden",
+                }}
+              >
+                {image
+                  ? <img src={image} alt="product" style={{ width: "100%", height: 240, objectFit: "contain", padding: 12 }} />
+                  : <div style={{ textAlign: "center", padding: 32 }}>
+                      <div style={{ fontSize: 32, marginBottom: 10 }}>📷</div>
+                      <div style={{ fontSize: 12, opacity: 0.5, lineHeight: 1.8 }}>點擊或拖曳上傳<br /><span style={{ fontSize: 11 }}>JPG、PNG、WEBP</span></div>
+                    </div>
+                }
+              </div>
+              <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={e => handleFile(e.target.files[0])} />
+            </div>
+
+            <div>
+              <div style={{ fontSize: 10, letterSpacing: 3, opacity: 0.4, marginBottom: 10, textTransform: "uppercase" }}>02 — 場景風格（可略）</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {SCENES.map(sc => (
+                  <button key={sc.id} onClick={() => setSelectedScene(selectedScene === sc.id ? null : sc.id)} style={{
+                    padding: "7px 13px",
+                    border: `1.5px solid ${selectedScene === sc.id ? "#8b7355" : "#c8bfb0"}`,
+                    borderRadius: 2,
+                    background: selectedScene === sc.id ? "#8b7355" : "transparent",
+                    color: selectedScene === sc.id ? "#fff" : "#2c2a27",
+                    fontSize: 12, cursor: "pointer", transition: "all 0.15s",
+                  }}>
+                    {sc.emoji} {sc.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button onClick={run} disabled={!canRun} style={{
+              padding: "16px", border: "none", borderRadius: 2,
+              background: !canRun ? "#c8bfb0" : "#2c2a27",
+              color: "#f7f4ef", fontSize: 12, letterSpacing: 2,
+              textTransform: "uppercase", cursor: !canRun ? "not-allowed" : "pointer",
+            }}>
+              {step === STEP.ANALYZING ? "🔍 分析商品中..." : step === STEP.GENERATING ? "🎨 生成圖片中..." : "✦ 開始生成商品圖"}
+            </button>
+
+            {step === STEP.DONE && (
+              <button onClick={reset} style={{
+                padding: "14px", border: "1.5px solid #c8bfb0", borderRadius: 2,
+                background: "transparent", fontSize: 12, letterSpacing: 2,
+                textTransform: "uppercase", cursor: "pointer", color: "#2c2a27",
+              }}>↺ 重新上傳</button>
+            )}
+          </div>
+
+          {/* RIGHT */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ fontSize: 10, letterSpacing: 3, opacity: 0.4, textTransform: "uppercase" }}>03 — 生成結果</div>
+
+            {step === STEP.IDLE && (
+              <div style={{ background: "#faf8f5", border: "1.5px solid #e8e0d5", borderRadius: 4, minHeight: 400, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#c8bfb0" }}>
+                <div style={{ fontSize: 36, marginBottom: 12 }}>🏮</div>
+                <div style={{ fontSize: 12, textAlign: "center", lineHeight: 1.8 }}>上傳商品照片後<br />AI 自動分析場景並生成圖片</div>
+              </div>
+            )}
+
+            {(step === STEP.ANALYZING || step === STEP.GENERATING) && (
+              <div style={{ background: "#faf8f5", border: "1.5px solid #e8e0d5", borderRadius: 4, minHeight: 400, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16 }}>
+                <div style={{ width: 36, height: 36, border: "2px solid #e8e0d5", borderTop: "2px solid #8b7355", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
+                <div style={{ fontSize: 12, letterSpacing: 2, opacity: 0.5 }}>
+                  {step === STEP.ANALYZING ? "ANALYZING PRODUCT..." : "GENERATING IMAGE..."}
+                </div>
+                {analysis && step === STEP.GENERATING && (
+                  <div style={{ textAlign: "center", fontSize: 12, opacity: 0.6 }}>
+                    <div style={{ fontWeight: 600, marginBottom: 4 }}>{analysis.product_type}</div>
+                    <div>{analysis.matched_scene} — {analysis.scene_reason}</div>
+                  </div>
+                )}
+                <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+              </div>
+            )}
+
+            {step === STEP.DONE && generatedImage && (
+              <>
+                <div style={{ borderRadius: 4, overflow: "hidden", border: "1.5px solid #e8e0d5" }}>
+                  <img src={generatedImage} alt="generated" style={{ width: "100%", display: "block" }} />
+                </div>
+                {analysis && (
+                  <div style={{ background: "#faf8f5", border: "1.5px solid #e8e0d5", borderRadius: 4, padding: 20 }}>
+                    <div style={{ fontSize: 10, letterSpacing: 2, opacity: 0.4, marginBottom: 8, textTransform: "uppercase" }}>AI 分析</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>{analysis.product_type}</div>
+                    <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 10 }}>場景：{analysis.matched_scene} — {analysis.scene_reason}</div>
+                    <div style={{ background: "#2c2a27", color: "#b8d4b0", borderRadius: 2, padding: "10px 12px", fontSize: 10, lineHeight: 1.7, fontFamily: "monospace" }}>
+                      {analysis.prompt}
+                    </div>
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <a href={generatedImage} download="product-scene.jpg" style={{
+                    flex: 1, textAlign: "center", textDecoration: "none", display: "block",
+                    padding: "12px", background: "#8b7355", color: "#fff",
+                    borderRadius: 2, fontSize: 11, letterSpacing: 2, textTransform: "uppercase",
+                  }}>↓ 下載圖片</a>
+                  <button onClick={() => navigator.clipboard.writeText(analysis?.prompt || "")} style={{
+                    flex: 1, padding: "12px", border: "1.5px solid #c8bfb0", borderRadius: 2,
+                    background: "transparent", fontSize: 11, letterSpacing: 2,
+                    textTransform: "uppercase", cursor: "pointer", color: "#2c2a27",
+                  }}>⊕ 複製 Prompt</button>
+                </div>
+              </>
+            )}
+
+            {step === STEP.ERROR && (
+              <div style={{ background: "#fdf0f0", border: "1.5px solid #f0c0c0", borderRadius: 4, padding: 20 }}>
+                <div style={{ fontSize: 13, color: "#c04040", marginBottom: 8 }}>生成失敗</div>
+                <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 12 }}>{errorMsg || "請確認 API Key 正確且有足夠額度"}</div>
+                <button onClick={run} style={{ padding: "10px 20px", background: "#c04040", color: "#fff", border: "none", borderRadius: 2, fontSize: 11, cursor: "pointer" }}>重試</button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
