@@ -127,7 +127,7 @@ ${sceneNote}`
             input_image: `data:image/jpeg;base64,${await compressImage(imageBase64, imageMediaType)}`,
             aspect_ratio: "1:1",
             output_format: "jpg",
-            output_quality: 90,
+            output_quality: 100,
             safety_tolerance: 2,
           }
         }),
