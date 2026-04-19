@@ -94,8 +94,9 @@ ${sceneNote}`
 
       const geminiData = await geminiRes.json();
       const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || "";
-      const cleaned = rawText.replace(/```json|```/g, "").trim();
-      const parsed = JSON.parse(cleaned);
+      const match = rawText.match(/\{[\s\S]*\}/);
+      if (!match) throw new Error("Gemini 回傳格式錯誤，請重試");
+      const parsed = JSON.parse(match[0]);
       setAnalysis(parsed);
       setStep(STEP.GENERATING);
 
