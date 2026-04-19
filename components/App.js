@@ -49,6 +49,23 @@ export default function App() {
     handleFile(e.dataTransfer.files[0]);
   };
 
+  const compressImage = (base64, mimeType) => new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      const MAX = 1024;
+      let w = img.width, h = img.height;
+      if (w > MAX || h > MAX) {
+        if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+        else { w = Math.round(w * MAX / h); h = MAX; }
+      }
+      canvas.width = w; canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL("image/jpeg", 0.85).split(",")[1]);
+    };
+    img.src = `data:${mimeType};base64,${base64}`;
+  });
+
   const run = async () => {
     if (!imageBase64) return;
     setStep(STEP.ANALYZING);
@@ -107,7 +124,7 @@ ${sceneNote}`
           action: "create",
           input: {
             prompt: parsed.prompt,
-            input_image: `data:${imageMediaType};base64,${imageBase64}`,
+            input_image: `data:image/jpeg;base64,${await compressImage(imageBase64, imageMediaType)}`,
             aspect_ratio: "1:1",
             output_format: "jpg",
             output_quality: 90,
