@@ -22,6 +22,7 @@ export default function App() {
   const [generatedImage, setGeneratedImage] = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [debugInfo, setDebugInfo] = useState("");
   const fileRef = useRef();
 
   const REPLICATE_KEY = process.env.NEXT_PUBLIC_REPLICATE_KEY;
@@ -33,6 +34,7 @@ export default function App() {
     setAnalysis(null);
     setGeneratedImage(null);
     setStep(STEP.IDLE);
+    setDebugInfo("");
     const reader = new FileReader();
     reader.onload = (e) => {
       setImageBase64(e.target.result.split(",")[1]);
@@ -53,9 +55,9 @@ export default function App() {
     setAnalysis(null);
     setGeneratedImage(null);
     setErrorMsg("");
+    setDebugInfo("");
 
     try {
-      // Step 1: Gemini analyzes product (free tier)
       const sceneNote = selectedScene
         ? `用戶指定場景：「${SCENES.find(s => s.id === selectedScene)?.label}」（${SCENES.find(s => s.id === selectedScene)?.desc}）。`
         : "請根據商品自動選擇最適合場景。";
@@ -68,39 +70,36 @@ export default function App() {
           body: JSON.stringify({
             contents: [{
               parts: [
+                { inline_data: { mime_type: imageMediaType, data: imageBase64 } },
                 {
-                  inline_data: {
-                    mime_type: imageMediaType,
-                    data: imageBase64,
-                  }
-                },
-                {
-                  text: `你是電商商品攝影師，專注居家類產品（時鐘、盆栽等）。
-分析這個商品，只輸出 JSON，不要其他文字或 markdown：
-{
-  "product_type": "商品類型",
-  "matched_scene": "場景名稱（中文）",
-  "scene_reason": "選擇原因（10字內）",
-  "prompt": "英文圖像生成 prompt，描述商品放在場景中的完整畫面，包含商品顏色材質、場景道具、燈光方向、整體氛圍，至少60字，結尾加：professional product photography, high quality, 8k, commercial"
-}
+                  text: `你是電商商品攝影師。分析這個商品圖片，只輸出純 JSON，不要任何說明文字或 markdown：
+{"product_type":"商品類型","matched_scene":"場景名稱","scene_reason":"原因","prompt":"English image generation prompt with scene, lighting, style, at least 60 words, end with: professional product photography, high quality, 8k"}
 ${sceneNote}`
                 }
               ]
             }],
-            generationConfig: { temperature: 0.4 }
+            generationConfig: { temperature: 0.2 }
           })
         }
       );
 
       const geminiData = await geminiRes.json();
+
+      // Show debug info
       const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      const errorDetail = geminiData.error?.message || "";
+      setDebugInfo(errorDetail || rawText.substring(0, 200));
+
+      if (errorDetail) throw new Error(`Gemini 錯誤：${errorDetail}`);
+      if (!rawText) throw new Error("Gemini 沒有回傳內容，請確認 API Key 正確");
+
       const match = rawText.match(/\{[\s\S]*\}/);
-      if (!match) throw new Error("Gemini 回傳格式錯誤，請重試");
+      if (!match) throw new Error(`無法解析回應，內容：${rawText.substring(0, 100)}`);
+
       const parsed = JSON.parse(match[0]);
       setAnalysis(parsed);
       setStep(STEP.GENERATING);
 
-      // Step 2: Replicate flux-schnell generates image
       const replicateRes = await fetch("https://api.replicate.com/v1/models/black-forest-labs/flux-schnell/predictions", {
         method: "POST",
         headers: {
@@ -120,7 +119,7 @@ ${sceneNote}`
       });
 
       const prediction = await replicateRes.json();
-      if (!prediction.id) throw new Error(prediction.detail || "無法建立生成任務");
+      if (!prediction.id) throw new Error(prediction.detail || "無法建立 Replicate 任務");
 
       let result = prediction;
       let attempts = 0;
@@ -137,7 +136,7 @@ ${sceneNote}`
         setGeneratedImage(result.output[0]);
         setStep(STEP.DONE);
       } else {
-        throw new Error(result.error || "圖片生成失敗");
+        throw new Error(result.error || "Replicate 圖片生成失敗");
       }
     } catch (err) {
       setErrorMsg(err.message);
@@ -148,7 +147,7 @@ ${sceneNote}`
   const reset = () => {
     setImage(null); setImageBase64(null); setAnalysis(null);
     setGeneratedImage(null); setStep(STEP.IDLE);
-    setSelectedScene(null); setErrorMsg("");
+    setSelectedScene(null); setErrorMsg(""); setDebugInfo("");
   };
 
   const canRun = image && step !== STEP.ANALYZING && step !== STEP.GENERATING;
@@ -253,7 +252,12 @@ ${sceneNote}`
             {step === STEP.ERROR && (
               <div style={{ background: "#fdf0f0", border: "1.5px solid #f0c0c0", borderRadius: 4, padding: 20 }}>
                 <div style={{ fontSize: 13, color: "#c04040", marginBottom: 8 }}>生成失敗</div>
-                <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 12 }}>{errorMsg || "請確認 API Key 正確且有足夠額度"}</div>
+                <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 8 }}>{errorMsg}</div>
+                {debugInfo && (
+                  <div style={{ background: "#2c2a27", color: "#f0c0c0", borderRadius: 2, padding: "8px 10px", fontSize: 10, fontFamily: "monospace", lineHeight: 1.6, marginBottom: 12, wordBreak: "break-all" }}>
+                    {debugInfo}
+                  </div>
+                )}
                 <button onClick={run} style={{ padding: "10px 20px", background: "#c04040", color: "#fff", border: "none", borderRadius: 2, fontSize: 11, cursor: "pointer" }}>重試</button>
               </div>
             )}
