@@ -73,7 +73,7 @@ export default function App() {
                 { inline_data: { mime_type: imageMediaType, data: imageBase64 } },
                 {
                   text: `你是電商商品攝影師。分析這個商品圖片，只輸出純 JSON，不要任何說明文字或 markdown：
-{"product_type":"商品類型","matched_scene":"場景名稱","scene_reason":"原因","prompt":"English image generation prompt with scene, lighting, style, at least 60 words, end with: professional product photography, high quality, 8k"}
+{"product_type":"商品類型","matched_scene":"場景名稱","scene_reason":"原因","prompt":"Keep the product exactly as shown, place it in [scene description]. Describe the background scene in detail: specific props, lighting direction, atmosphere, textures. At least 60 words. End with: professional product photography, high quality, 8k, commercial photography"}
 ${sceneNote}`
                 }
               ]
@@ -107,11 +107,11 @@ ${sceneNote}`
           action: "create",
           input: {
             prompt: parsed.prompt,
-            go_fast: true,
-            num_outputs: 1,
+            input_image: `data:${imageMediaType};base64,${imageBase64}`,
             aspect_ratio: "1:1",
             output_format: "jpg",
             output_quality: 90,
+            safety_tolerance: 2,
           }
         }),
       });
