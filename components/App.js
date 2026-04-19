@@ -149,11 +149,13 @@ ${sceneNote}`
         attempts++;
       }
 
-      if (result.status === "succeeded" && result.output?.[0]) {
-        setGeneratedImage(result.output[0]);
+      if (result.status === "succeeded") {
+        const imgUrl = Array.isArray(result.output) ? result.output[0] : result.output;
+        if (!imgUrl) throw new Error(`成功但無圖片，output: ${JSON.stringify(result.output)}`);
+        setGeneratedImage(imgUrl);
         setStep(STEP.DONE);
       } else {
-        throw new Error(result.error || "Replicate 圖片生成失敗");
+        throw new Error(result.error || `狀態：${result.status}，output：${JSON.stringify(result.output)}`);
       }
     } catch (err) {
       setErrorMsg(err.message);
