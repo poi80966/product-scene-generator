@@ -25,7 +25,7 @@ export default function App() {
   const [debugInfo, setDebugInfo] = useState("");
   const fileRef = useRef();
 
-  const REPLICATE_KEY = process.env.NEXT_PUBLIC_REPLICATE_KEY;
+  const REPLICATE_KEY = process.env.REPLICATE_KEY;
   const GEMINI_KEY = process.env.NEXT_PUBLIC_GEMINI_KEY;
 
   const handleFile = useCallback((file) => {
@@ -100,13 +100,11 @@ ${sceneNote}`
       setAnalysis(parsed);
       setStep(STEP.GENERATING);
 
-      const replicateRes = await fetch("https://api.replicate.com/v1/models/black-forest-labs/flux-schnell/predictions", {
+      const replicateRes = await fetch("/api/replicate", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${REPLICATE_KEY}`,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          action: "create",
           input: {
             prompt: parsed.prompt,
             go_fast: true,
@@ -125,8 +123,10 @@ ${sceneNote}`
       let attempts = 0;
       while (result.status !== "succeeded" && result.status !== "failed" && attempts < 60) {
         await sleep(2000);
-        const pollRes = await fetch(`https://api.replicate.com/v1/predictions/${result.id}`, {
-          headers: { "Authorization": `Bearer ${REPLICATE_KEY}` }
+        const pollRes = await fetch("/api/replicate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "poll", id: result.id }),
         });
         result = await pollRes.json();
         attempts++;
