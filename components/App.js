@@ -22,12 +22,14 @@ export default function App() {
   const [generatedImage, setGeneratedImage] = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const [removeBgEnabled, setRemoveBgEnabled] = useState(true);
+  const [useNanaBanana, setUseNanaBanana] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [debugInfo, setDebugInfo] = useState("");
   const fileRef = useRef();
 
   const GEMINI_KEY = process.env.NEXT_PUBLIC_GEMINI_KEY;
   const REMOVEBG_KEY = process.env.NEXT_PUBLIC_REMOVEBG_KEY;
+  const GEMINI_IMAGE_KEY = process.env.NEXT_PUBLIC_GEMINI_KEY;
 
   const handleFile = useCallback((file) => {
     if (!file || !file.type.startsWith("image/")) return;
@@ -107,6 +109,31 @@ export default function App() {
     return btoa(binary);
   };
 
+  const generateWithNanaBanana = async (imageBase64, mimeType, prompt) => {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${GEMINI_IMAGE_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { inline_data: { mime_type: mimeType, data: imageBase64 } },
+              { text: prompt + " Generate a photorealistic product scene image." }
+            ]
+          }],
+          generationConfig: { responseModalities: ["IMAGE", "TEXT"] }
+        })
+      }
+    );
+    const data = await res.json();
+    if (data.error) throw new Error(`Nano Banana 錯誤：${data.error.message}`);
+    const parts = data.candidates?.[0]?.content?.parts || [];
+    const imgPart = parts.find(p => p.inlineData?.mimeType?.startsWith("image/"));
+    if (!imgPart) throw new Error("Nano Banana 沒有回傳圖片");
+    return `data:${imgPart.inlineData.mimeType};base64,${imgPart.inlineData.data}`;
+  };
+
   const run = async () => {
     if (!imageBase64) return;
     setStep(STEP.ANALYZING);
@@ -181,48 +208,69 @@ ${sceneNote}`
           : await compressImage(imageBase64, imageMediaType);
       }
 
-      // Step 4: flux-kontext-max generates final image
+      // Step 4: Generate image
       setStep(STEP.GENERATING);
-      const replicateRes = await fetch("/api/replicate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "create",
-          input: {
-            prompt: parsed.prompt,
-            input_image: `data:image/jpeg;base64,${inputImage}`,
-            aspect_ratio: "1:1",
-            output_format: "jpg",
-            output_quality: 100,
-            safety_tolerance: 2,
-          },
-        }),
-      });
+      let finalImgUrl;
 
-      const prediction = await replicateRes.json();
-      if (!prediction.id) throw new Error(prediction.detail || "無法建立生成任務");
-
-      let result = prediction;
-      let attempts = 0;
-      while (result.status !== "succeeded" && result.status !== "failed" && attempts < 60) {
-        await sleep(2000);
-        const pollRes = await fetch("/api/replicate", {
+      if (useNanaBanana) {
+        // Use Gemini Nano Banana
+        finalImgUrl = await generateWithNanaBanana(inputImage, "image/jpeg", parsed.prompt);
+      } else {
+        // Use flux-kontext-max
+        const replicateRes = await fetch("/api/replicate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "poll", id: result.id }),
+          body: JSON.stringify({
+            action: "create",
+            input: {
+              prompt: parsed.prompt,
+              input_image: `data:image/jpeg;base64,${inputImage}`,
+              aspect_ratio: "1:1",
+              output_format: "jpg",
+              output_quality: 100,
+              safety_tolerance: 2,
+            },
+          }),
         });
-        result = await pollRes.json();
-        attempts++;
+
+        const prediction = await replicateRes.json();
+        if (!prediction.id) throw new Error(prediction.detail || "無法建立生成任務");
+
+        let result = prediction;
+        let attempts = 0;
+        while (result.status !== "succeeded" && result.status !== "failed" && attempts < 60) {
+          await sleep(2000);
+          const pollRes = await fetch("/api/replicate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "poll", id: result.id }),
+          });
+          result = await pollRes.json();
+          attempts++;
+        }
+
+        if (result.status === "succeeded") {
+          finalImgUrl = Array.isArray(result.output) ? result.output[0] : result.output;
+          if (!finalImgUrl) throw new Error(`成功但無圖片：${JSON.stringify(result.output)}`);
+        } else {
+          throw new Error(result.error || `狀態：${result.status}`);
+        }
       }
 
-      if (result.status === "succeeded") {
-        const imgUrl = Array.isArray(result.output) ? result.output[0] : result.output;
-        if (!imgUrl) throw new Error(`成功但無圖片：${JSON.stringify(result.output)}`);
-        setGeneratedImage(imgUrl);
-        setStep(STEP.DONE);
-        // Auto download
-        try {
-          const res = await fetch(imgUrl);
+      setGeneratedImage(finalImgUrl);
+      setStep(STEP.DONE);
+      // Auto download
+      try {
+        const isDataUrl = finalImgUrl.startsWith("data:");
+        if (isDataUrl) {
+          const a = document.createElement("a");
+          a.href = finalImgUrl;
+          a.download = `product-scene-${Date.now()}.jpg`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        } else {
+          const res = await fetch(finalImgUrl);
           const blob = await res.blob();
           const url = URL.createObjectURL(blob);
           const a = document.createElement("a");
@@ -232,10 +280,8 @@ ${sceneNote}`
           a.click();
           document.body.removeChild(a);
           URL.revokeObjectURL(url);
-        } catch(e) { console.log("Auto download failed", e); }
-      } else {
-        throw new Error(result.error || `狀態：${result.status}`);
-      }
+        }
+      } catch(e) { console.log("Auto download failed", e); }
     } catch (err) {
       setErrorMsg(err.message);
       setStep(STEP.ERROR);
@@ -319,6 +365,28 @@ ${sceneNote}`
               <div>
                 <div style={{ fontSize: 11, letterSpacing: 1 }}>✂️ 自動去背</div>
                 <div style={{ fontSize: 10, opacity: 0.4 }}>{removeBgEnabled ? "開啟 — 需要 remove.bg 額度" : "關閉 — 直接使用原圖"}</div>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "#faf8f5", border: "1.5px solid #e8e0d5", borderRadius: 2 }}>
+              <div
+                onClick={() => setUseNanaBanana(v => !v)}
+                style={{
+                  width: 36, height: 20, borderRadius: 10,
+                  background: useNanaBanana ? "#8b7355" : "#c8bfb0",
+                  position: "relative", cursor: "pointer", transition: "all 0.2s",
+                }}
+              >
+                <div style={{
+                  width: 16, height: 16, borderRadius: "50%", background: "#fff",
+                  position: "absolute", top: 2,
+                  left: useNanaBanana ? 18 : 2,
+                  transition: "all 0.2s",
+                }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 11, letterSpacing: 1 }}>🍌 圖像模型</div>
+                <div style={{ fontSize: 10, opacity: 0.4 }}>{useNanaBanana ? "Gemini Nano Banana（便宜）" : "flux-kontext-max（穩定）"}</div>
               </div>
             </div>
 
