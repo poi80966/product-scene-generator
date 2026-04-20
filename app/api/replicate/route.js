@@ -3,13 +3,22 @@ export async function POST(request) {
   const REPLICATE_KEY = process.env.REPLICATE_KEY;
 
   if (body.action === "create") {
-    const res = await fetch("https://api.replicate.com/v1/models/black-forest-labs/flux-kontext-max/predictions", {
+    const res = await fetch("https://api.replicate.com/v1/models/black-forest-labs/flux-schnell/predictions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${REPLICATE_KEY}`,
       },
-      body: JSON.stringify({ input: { ...body.input, prompt_upsampling: false } }),
+      body: JSON.stringify({
+        input: {
+          prompt: body.prompt,
+          go_fast: true,
+          num_outputs: 1,
+          aspect_ratio: "1:1",
+          output_format: "jpg",
+          output_quality: 95,
+        }
+      }),
     });
     const data = await res.json();
     return Response.json(data);
