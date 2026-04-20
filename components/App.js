@@ -121,6 +121,24 @@ export default function App() {
     img.src = `data:${mimeType};base64,${base64}`;
   });
 
+  const removeBackground = async (base64, mimeType) => {
+    const blob = await fetch(`data:${mimeType};base64,${base64}`).then(r => r.blob());
+    const formData = new FormData();
+    formData.append("image_file", blob, "product.jpg");
+    formData.append("size", "auto");
+    const res = await fetch("https://api.remove.bg/v1.0/removebg", {
+      method: "POST",
+      headers: { "X-Api-Key": process.env.NEXT_PUBLIC_REMOVEBG_KEY },
+      body: formData,
+    });
+    if (!res.ok) throw new Error(`去背失敗：${res.status}`);
+    const arrayBuffer = await res.arrayBuffer();
+    const uint8 = new Uint8Array(arrayBuffer);
+    let binary = "";
+    for (let i = 0; i < uint8.length; i++) binary += String.fromCharCode(uint8[i]);
+    return btoa(binary);
+  };
+
   const run = async () => {
     if (!imageBase64) return;
     setStep(STEP.ANALYZING);
@@ -189,7 +207,7 @@ ${sceneNote}`
           action: "create",
           input: {
             prompt: parsed.prompt,
-            input_image: `data:image/jpeg;base64,${parsed.is_wall_clock === "true" ? await compositeProductOnBackground(imageBase64, imageMediaType) : await compressImage(imageBase64, imageMediaType)}`,
+            input_image: `data:image/png;base64,${parsed.is_wall_clock === "true" ? _composited : _removedBg}`,
             aspect_ratio: "1:1",
             output_format: "jpg",
             output_quality: 100,
