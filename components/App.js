@@ -82,6 +82,45 @@ export default function App() {
     bgImg.src = backgroundUrl;
   });
 
+  const compressImage = (base64, mimeType) => new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      const MAX = 1024;
+      let w = img.width, h = img.height;
+      if (w > MAX || h > MAX) {
+        if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+        else { w = Math.round(w * MAX / h); h = MAX; }
+      }
+      canvas.width = w; canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL("image/jpeg", 0.85).split(",")[1]);
+    };
+    img.src = `data:${mimeType};base64,${base64}`;
+  });
+
+  const compositeProductOnBackground = (base64, mimeType) => new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      const SIZE = 1024;
+      canvas.width = SIZE;
+      canvas.height = SIZE;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#f5f5f5";
+      ctx.fillRect(0, 0, SIZE, SIZE);
+      const maxProductSize = SIZE * 0.30;
+      const scale = Math.min(maxProductSize / img.width, maxProductSize / img.height);
+      const pw = img.width * scale;
+      const ph = img.height * scale;
+      const px = (SIZE - pw) / 2;
+      const py = SIZE * 0.15;
+      ctx.drawImage(img, px, py, pw, ph);
+      resolve(canvas.toDataURL("image/jpeg", 0.92).split(",")[1]);
+    };
+    img.src = `data:${mimeType};base64,${base64}`;
+  });
+
   const run = async () => {
     if (!imageBase64) return;
     setStep(STEP.ANALYZING);
