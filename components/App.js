@@ -76,7 +76,7 @@ export default function App() {
       const ctx = canvas.getContext("2d");
       ctx.fillStyle = "#f5f5f5";
       ctx.fillRect(0, 0, SIZE, SIZE);
-      const maxProductSize = SIZE * 0.30;
+      const maxProductSize = SIZE * 0.20;
       const scale = Math.min(maxProductSize / img.width, maxProductSize / img.height);
       const pw = img.width * scale;
       const ph = img.height * scale;
@@ -137,7 +137,7 @@ export default function App() {
   "is_wall_clock": "true或false，判斷是否為掛鐘",
   "matched_scene": "場景名稱（中文）",
   "scene_reason": "選擇原因（10字內）",
-  "prompt": "If is_wall_clock is true: a wide interior room with a large empty wall in the center taking up most of the image, suitable for hanging a clock. Show the room context below the wall: furniture, floor, small decorative items. The wall must be clean and empty with no objects on it. If not a wall clock: a styled interior scene with a surface like a desk, shelf or table in the lower half. No people. At least 60 words. End with: interior design photography, high quality, 8k"
+  "prompt": "Keep the product exactly as shown with its original colors, materials and surface texture unchanged. If it is a wall clock, it must be mounted and hanging on a wall in the scene, shown as a natural wall decoration. Place it in [scene description]. Describe only the background: props, lighting, atmosphere. Do NOT alter the product. At least 60 words. End with: professional product photography, high quality, 8k, commercial photography, preserve product details"
 }
 ${sceneNote}`
                 }
@@ -169,16 +169,27 @@ ${sceneNote}`
       setStep(STEP.REMOVING);
       const removedBg = await removeBackground(imageBase64, imageMediaType);
 
+      // Step 3: Prepare input image
       const isWallClock = parsed.is_wall_clock === "true";
+      const inputImage = isWallClock
+        ? await compositeProductOnBackground(removedBg, "image/png")
+        : await compressImage(removedBg, "image/png");
 
-      // Step 3: Generate background scene with flux-schnell
+      // Step 4: flux-kontext-max generates final image
       setStep(STEP.GENERATING);
       const replicateRes = await fetch("/api/replicate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "create",
-          prompt: parsed.prompt,
+          input: {
+            prompt: parsed.prompt,
+            input_image: `data:image/jpeg;base64,${inputImage}`,
+            aspect_ratio: "1:1",
+            output_format: "jpg",
+            output_quality: 100,
+            safety_tolerance: 2,
+          },
         }),
       });
 
@@ -198,54 +209,27 @@ ${sceneNote}`
         attempts++;
       }
 
-      const bgUrl = Array.isArray(result.output) ? result.output[0] : result.output;
-      if (!bgUrl) throw new Error("背景圖生成失敗");
-
-      // Step 4: Composite product onto background
-      const canvas = document.createElement("canvas");
-      const SIZE = 1024;
-      canvas.width = SIZE;
-      canvas.height = SIZE;
-      const ctx = canvas.getContext("2d");
-
-      const bgImg = new Image();
-      bgImg.crossOrigin = "anonymous";
-      await new Promise((resolve, reject) => {
-        bgImg.onload = resolve;
-        bgImg.onerror = reject;
-        bgImg.src = bgUrl;
-      });
-      ctx.drawImage(bgImg, 0, 0, SIZE, SIZE);
-
-      const productImg = new Image();
-      await new Promise((resolve, reject) => {
-        productImg.onload = resolve;
-        productImg.onerror = reject;
-        productImg.src = `data:image/png;base64,${removedBg}`;
-      });
-
-      // Wall clock: upper center ~20%, others: lower center ~28%
-      const maxSize = SIZE * (isWallClock ? 0.20 : 0.28);
-      const scale = Math.min(maxSize / productImg.width, maxSize / productImg.height);
-      const pw = productImg.width * scale;
-      const ph = productImg.height * scale;
-      const px = (SIZE - pw) / 2;
-      const py = isWallClock ? SIZE * 0.35 : SIZE * 0.55;
-      ctx.drawImage(productImg, px, py, pw, ph);
-
-      const finalDataUrl = canvas.toDataURL("image/jpeg", 0.95);
-      setGeneratedImage(finalDataUrl);
-      setStep(STEP.DONE);
-
-      // Auto download
-      try {
-        const a = document.createElement("a");
-        a.href = finalDataUrl;
-        a.download = `product-scene-${Date.now()}.jpg`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-      } catch(e) { console.log("Auto download failed", e); }
+      if (result.status === "succeeded") {
+        const imgUrl = Array.isArray(result.output) ? result.output[0] : result.output;
+        if (!imgUrl) throw new Error(`成功但無圖片：${JSON.stringify(result.output)}`);
+        setGeneratedImage(imgUrl);
+        setStep(STEP.DONE);
+        // Auto download
+        try {
+          const res = await fetch(imgUrl);
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `product-scene-${Date.now()}.jpg`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        } catch(e) { console.log("Auto download failed", e); }
+      } else {
+        throw new Error(result.error || `狀態：${result.status}`);
+      }
     } catch (err) {
       setErrorMsg(err.message);
       setStep(STEP.ERROR);
