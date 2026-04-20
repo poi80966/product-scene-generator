@@ -113,7 +113,7 @@ export default function App() {
   "is_wall_clock": "true或false，判斷是否為掛鐘",
   "matched_scene": "場景名稱（中文）",
   "scene_reason": "選擇原因（10字內）",
-  "background_prompt": "英文純場景背景描述，不要包含商品，只描述空間、牆面、家具、燈光、氛圍，至少50字，結尾加：interior design photography, high quality, 8k, no people"
+  "prompt": "Keep the product exactly as shown with its original colors, materials and surface texture unchanged. If it is a wall clock, mount it on a wall, the clock should occupy no more than 5% of the final image, small decorative accent, shown as a natural wall decoration in a wide room shot. Place it in [scene description]. Describe only the background: props, lighting, atmosphere. Do NOT alter the product. At least 60 words. End with: professional product photography, high quality, 8k, commercial photography, preserve product details"
 }
 ${sceneNote}`
                 }
@@ -148,7 +148,14 @@ ${sceneNote}`
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "create",
-          prompt: parsed.background_prompt,
+          input: {
+            prompt: parsed.prompt,
+            input_image: `data:image/jpeg;base64,${parsed.is_wall_clock === "true" ? await compositeProductOnBackground(imageBase64, imageMediaType) : await compressImage(imageBase64, imageMediaType)}`,
+            aspect_ratio: "1:1",
+            output_format: "jpg",
+            output_quality: 100,
+            safety_tolerance: 2,
+          },
         }),
       });
 
