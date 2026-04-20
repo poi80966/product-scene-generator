@@ -21,6 +21,7 @@ export default function App() {
   const [analysis, setAnalysis] = useState(null);
   const [generatedImage, setGeneratedImage] = useState(null);
   const [dragOver, setDragOver] = useState(false);
+  const [removeBgEnabled, setRemoveBgEnabled] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
   const [debugInfo, setDebugInfo] = useState("");
   const fileRef = useRef();
@@ -121,7 +122,7 @@ export default function App() {
 
       // Step 1: Gemini analyzes product
       const geminiRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -137,7 +138,7 @@ export default function App() {
   "is_wall_clock": "true或false，判斷是否為掛鐘",
   "matched_scene": "場景名稱（中文）",
   "scene_reason": "選擇原因（10字內）",
-  "prompt": "Keep the product exactly as shown with its original colors, materials and surface texture unchanged. If it is a wall clock, it must be mounted and hanging on a wall in the scene, shown as a natural wall decoration, the clock should be smaller than the furniture in the room, similar in size to a standard 30cm wall clock in a real room. Place it in [scene description]. Describe only the background: props, lighting, atmosphere. Do NOT alter the product. At least 60 words. End with: professional product photography, high quality, 8k, commercial photography, preserve product details"
+  "prompt": "Keep the product exactly as shown with its original colors, materials and surface texture unchanged. If it is a wall clock, it must be mounted and hanging on a wall in the scene, shown as a natural wall decoration. Place it in [scene description]. Describe only the background: props, lighting, atmosphere. Do NOT alter the product. At least 60 words. End with: professional product photography, high quality, 8k, commercial photography, preserve product details"
 }
 ${sceneNote}`
                 }
@@ -165,15 +166,20 @@ ${sceneNote}`
 
       setAnalysis(parsed);
 
-      // Step 2: Auto remove background
-      setStep(STEP.REMOVING);
-      const removedBg = await removeBackground(imageBase64, imageMediaType);
-
-      // Step 3: Prepare input image
+      // Step 2: Auto remove background (if enabled)
+      let inputImage;
       const isWallClock = parsed.is_wall_clock === "true";
-      const inputImage = isWallClock
-        ? await compositeProductOnBackground(removedBg, "image/png")
-        : await compressImage(removedBg, "image/png");
+      if (removeBgEnabled) {
+        setStep(STEP.REMOVING);
+        const removedBg = await removeBackground(imageBase64, imageMediaType);
+        inputImage = isWallClock
+          ? await compositeProductOnBackground(removedBg, "image/png")
+          : await compressImage(removedBg, "image/png");
+      } else {
+        inputImage = isWallClock
+          ? await compositeProductOnBackground(imageBase64, imageMediaType)
+          : await compressImage(imageBase64, imageMediaType);
+      }
 
       // Step 4: flux-kontext-max generates final image
       setStep(STEP.GENERATING);
@@ -291,6 +297,28 @@ ${sceneNote}`
                     {sc.emoji} {sc.label}
                   </button>
                 ))}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "#faf8f5", border: "1.5px solid #e8e0d5", borderRadius: 2 }}>
+              <div
+                onClick={() => setRemoveBgEnabled(v => !v)}
+                style={{
+                  width: 36, height: 20, borderRadius: 10,
+                  background: removeBgEnabled ? "#8b7355" : "#c8bfb0",
+                  position: "relative", cursor: "pointer", transition: "all 0.2s",
+                }}
+              >
+                <div style={{
+                  width: 16, height: 16, borderRadius: "50%", background: "#fff",
+                  position: "absolute", top: 2,
+                  left: removeBgEnabled ? 18 : 2,
+                  transition: "all 0.2s",
+                }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 11, letterSpacing: 1 }}>✂️ 自動去背</div>
+                <div style={{ fontSize: 10, opacity: 0.4 }}>{removeBgEnabled ? "開啟 — 需要 remove.bg 額度" : "關閉 — 直接使用原圖"}</div>
               </div>
             </div>
 
