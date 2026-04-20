@@ -66,6 +66,35 @@ export default function App() {
     img.src = `data:${mimeType};base64,${base64}`;
   });
 
+  const compositeProductOnBackground = (base64, mimeType) => new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      const SIZE = 1024;
+      canvas.width = SIZE;
+      canvas.height = SIZE;
+      const ctx = canvas.getContext("2d");
+
+      // White background
+      ctx.fillStyle = "#f5f5f5";
+      ctx.fillRect(0, 0, SIZE, SIZE);
+
+      // Scale product to ~30% of canvas
+      const maxProductSize = SIZE * 0.30;
+      const scale = Math.min(maxProductSize / img.width, maxProductSize / img.height);
+      const pw = img.width * scale;
+      const ph = img.height * scale;
+
+      // Place product center-top area
+      const px = (SIZE - pw) / 2;
+      const py = SIZE * 0.15;
+
+      ctx.drawImage(img, px, py, pw, ph);
+      resolve(canvas.toDataURL("image/jpeg", 0.92).split(",")[1]);
+    };
+    img.src = `data:${mimeType};base64,${base64}`;
+  });
+
   const run = async () => {
     if (!imageBase64) return;
     setStep(STEP.ANALYZING);
@@ -124,7 +153,7 @@ ${sceneNote}`
           action: "create",
           input: {
             prompt: parsed.prompt,
-            input_image: `data:image/jpeg;base64,${await compressImage(imageBase64, imageMediaType)}`,
+            input_image: `data:image/jpeg;base64,${parsed.is_wall_clock === "true" ? await compositeProductOnBackground(imageBase64, imageMediaType) : await compressImage(imageBase64, imageMediaType)}`,
             aspect_ratio: "1:1",
             output_format: "jpg",
             output_quality: 100,
