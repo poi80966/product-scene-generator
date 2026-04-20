@@ -9,7 +9,7 @@ const SCENES = [
   { id: "cafe", label: "咖啡廳風", emoji: "☕", desc: "木質桌面、暖燈、書本" },
 ];
 
-const STEP = { IDLE: "idle", ANALYZING: "analyzing", GENERATING: "generating", COMPOSITING: "compositing", DONE: "done", ERROR: "error" };
+const STEP = { IDLE: "idle", ANALYZING: "analyzing", REMOVING: "removing", GENERATING: "generating", DONE: "done", ERROR: "error" };
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 export default function App() {
@@ -26,6 +26,7 @@ export default function App() {
   const fileRef = useRef();
 
   const GEMINI_KEY = process.env.NEXT_PUBLIC_GEMINI_KEY;
+  const REMOVEBG_KEY = process.env.NEXT_PUBLIC_REMOVEBG_KEY;
 
   const handleFile = useCallback((file) => {
     if (!file || !file.type.startsWith("image/")) return;
@@ -47,40 +48,6 @@ export default function App() {
     setDragOver(false);
     handleFile(e.dataTransfer.files[0]);
   };
-
-  // Composite product onto background image
-  const compositeImages = (productBase64, productMime, backgroundUrl, isWallClock) => new Promise((resolve, reject) => {
-    const canvas = document.createElement("canvas");
-    const SIZE = 1024;
-    canvas.width = SIZE;
-    canvas.height = SIZE;
-    const ctx = canvas.getContext("2d");
-
-    const bgImg = new Image();
-    bgImg.crossOrigin = "anonymous";
-    bgImg.onload = () => {
-      ctx.drawImage(bgImg, 0, 0, SIZE, SIZE);
-
-      const productImg = new Image();
-      productImg.onload = () => {
-        // Wall clock: place upper center, ~25% of canvas
-        // Other products: place lower center, ~30% of canvas
-        const maxSize = SIZE * (isWallClock ? 0.25 : 0.32);
-        const scale = Math.min(maxSize / productImg.width, maxSize / productImg.height);
-        const pw = productImg.width * scale;
-        const ph = productImg.height * scale;
-        const px = (SIZE - pw) / 2;
-        const py = isWallClock ? SIZE * 0.20 : SIZE * 0.55;
-
-        ctx.drawImage(productImg, px, py, pw, ph);
-        resolve(canvas.toDataURL("image/jpeg", 0.95).split(",")[1]);
-      };
-      productImg.onerror = reject;
-      productImg.src = `data:${productMime};base64,${productBase64}`;
-    };
-    bgImg.onerror = reject;
-    bgImg.src = backgroundUrl;
-  });
 
   const compressImage = (base64, mimeType) => new Promise((resolve) => {
     const img = new Image();
@@ -128,7 +95,7 @@ export default function App() {
     formData.append("size", "auto");
     const res = await fetch("https://api.remove.bg/v1.0/removebg", {
       method: "POST",
-      headers: { "X-Api-Key": process.env.NEXT_PUBLIC_REMOVEBG_KEY },
+      headers: { "X-Api-Key": REMOVEBG_KEY },
       body: formData,
     });
     if (!res.ok) throw new Error(`去背失敗：${res.status}`);
@@ -197,9 +164,19 @@ ${sceneNote}`
       catch(e) { throw new Error(`JSON 解析失敗：${match[0].substring(0, 100)}`); }
 
       setAnalysis(parsed);
-      setStep(STEP.GENERATING);
 
-      // Step 2: Generate background scene with flux-schnell
+      // Step 2: Auto remove background
+      setStep(STEP.REMOVING);
+      const removedBg = await removeBackground(imageBase64, imageMediaType);
+
+      // Step 3: Composite on white background if wall clock
+      const isWallClock = parsed.is_wall_clock === "true";
+      const inputImage = isWallClock
+        ? await compositeProductOnBackground(removedBg, "image/png")
+        : await compressImage(removedBg, "image/png");
+
+      // Step 4: flux-kontext generates final image
+      setStep(STEP.GENERATING);
       const replicateRes = await fetch("/api/replicate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -207,7 +184,7 @@ ${sceneNote}`
           action: "create",
           input: {
             prompt: parsed.prompt,
-            input_image: `data:image/png;base64,${parsed.is_wall_clock === "true" ? _composited : _removedBg}`,
+            input_image: `data:image/jpeg;base64,${inputImage}`,
             aspect_ratio: "1:1",
             output_format: "jpg",
             output_quality: 100,
@@ -232,16 +209,27 @@ ${sceneNote}`
         attempts++;
       }
 
-      const bgUrl = Array.isArray(result.output) ? result.output[0] : result.output;
-      if (!bgUrl) throw new Error("背景圖生成失敗");
-
-      // Step 3: Composite product onto background
-      setStep(STEP.COMPOSITING);
-      const isWallClock = parsed.is_wall_clock === "true";
-      const finalBase64 = await compositeImages(imageBase64, imageMediaType, bgUrl, isWallClock);
-      setGeneratedImage(`data:image/jpeg;base64,${finalBase64}`);
-      setStep(STEP.DONE);
-
+      if (result.status === "succeeded") {
+        const imgUrl = Array.isArray(result.output) ? result.output[0] : result.output;
+        if (!imgUrl) throw new Error(`成功但無圖片：${JSON.stringify(result.output)}`);
+        setGeneratedImage(imgUrl);
+        setStep(STEP.DONE);
+        // Auto download
+        try {
+          const res = await fetch(imgUrl);
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `product-scene-${Date.now()}.jpg`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        } catch(e) { console.log("Auto download failed", e); }
+      } else {
+        throw new Error(result.error || `狀態：${result.status}`);
+      }
     } catch (err) {
       setErrorMsg(err.message);
       setStep(STEP.ERROR);
@@ -254,12 +242,12 @@ ${sceneNote}`
     setSelectedScene(null); setErrorMsg(""); setDebugInfo("");
   };
 
-  const canRun = image && step !== STEP.ANALYZING && step !== STEP.GENERATING && step !== STEP.COMPOSITING;
+  const canRun = image && ![STEP.ANALYZING, STEP.REMOVING, STEP.GENERATING].includes(step);
 
   const statusText = {
     [STEP.ANALYZING]: "🔍 分析商品中...",
-    [STEP.GENERATING]: "🎨 生成場景背景中...",
-    [STEP.COMPOSITING]: "✂️ 合成商品到場景中...",
+    [STEP.REMOVING]: "✂️ 自動去背中...",
+    [STEP.GENERATING]: "🎨 生成圖片中...",
   };
 
   return (
@@ -276,7 +264,7 @@ ${sceneNote}`
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
             <div>
-              <div style={{ fontSize: 10, letterSpacing: 3, opacity: 0.4, marginBottom: 10, textTransform: "uppercase" }}>01 — 上傳商品照片（建議去背）</div>
+              <div style={{ fontSize: 10, letterSpacing: 3, opacity: 0.4, marginBottom: 10, textTransform: "uppercase" }}>01 — 上傳商品照片</div>
               <div
                 onClick={() => fileRef.current.click()}
                 onDragOver={e => { e.preventDefault(); setDragOver(true); }}
@@ -321,11 +309,11 @@ ${sceneNote}`
             {step === STEP.IDLE && (
               <div style={{ background: "#faf8f5", border: "1.5px solid #e8e0d5", borderRadius: 4, minHeight: 400, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#c8bfb0" }}>
                 <div style={{ fontSize: 36, marginBottom: 12 }}>🏮</div>
-                <div style={{ fontSize: 12, textAlign: "center", lineHeight: 1.8 }}>上傳商品照片後<br />AI 自動分析場景並生成圖片</div>
+                <div style={{ fontSize: 12, textAlign: "center", lineHeight: 1.8 }}>上傳商品照片後<br />AI 自動分析、去背、生成場景圖</div>
               </div>
             )}
 
-            {(step === STEP.ANALYZING || step === STEP.GENERATING || step === STEP.COMPOSITING) && (
+            {[STEP.ANALYZING, STEP.REMOVING, STEP.GENERATING].includes(step) && (
               <div style={{ background: "#faf8f5", border: "1.5px solid #e8e0d5", borderRadius: 4, minHeight: 400, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16 }}>
                 <div style={{ width: 36, height: 36, border: "2px solid #e8e0d5", borderTop: "2px solid #8b7355", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
                 <div style={{ fontSize: 12, letterSpacing: 2, opacity: 0.5 }}>{statusText[step]}</div>
@@ -352,7 +340,7 @@ ${sceneNote}`
                   </div>
                 )}
                 <div style={{ display: "flex", gap: 8 }}>
-                  <a href={generatedImage} download="product-scene.jpg" style={{ flex: 1, textAlign: "center", textDecoration: "none", display: "block", padding: "12px", background: "#8b7355", color: "#fff", borderRadius: 2, fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }}>↓ 下載圖片</a>
+                  <a href={generatedImage} target="_blank" rel="noreferrer" style={{ flex: 1, textAlign: "center", textDecoration: "none", display: "block", padding: "12px", background: "#8b7355", color: "#fff", borderRadius: 2, fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }}>↓ 下載圖片</a>
                   <button onClick={reset} style={{ flex: 1, padding: "12px", border: "1.5px solid #c8bfb0", borderRadius: 2, background: "transparent", fontSize: 11, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer", color: "#2c2a27" }}>↺ 重新上傳</button>
                 </div>
               </>
