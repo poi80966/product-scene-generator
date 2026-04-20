@@ -111,7 +111,7 @@ export default function App() {
 
   const generateWithNanaBanana = async (imageBase64, mimeType, prompt) => {
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=${GEMINI_IMAGE_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${GEMINI_IMAGE_KEY}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -165,7 +165,7 @@ export default function App() {
   "is_wall_clock": "true或false，判斷是否為掛鐘",
   "matched_scene": "場景名稱（中文）",
   "scene_reason": "選擇原因（10字內）",
-  "prompt": "Keep the product exactly as shown with its original colors, materials and surface texture unchanged. If it is a wall clock, it must be mounted and hanging on a wall in the scene, shown as a natural wall decoration. Place it in [scene description]. Describe only the background: props, lighting, atmosphere. Do NOT alter the product. At least 60 words. End with: professional product photography, high quality, 8k, commercial photography, preserve product details"
+  "prompt": "Keep the product exactly as shown with its original colors, materials and surface texture unchanged. If it is a wall clock, it must be mounted and hanging on a wall in the background, sized realistically relative to the room — a 30cm clock should look small on a large wall, with furniture and room elements visible around it to show proper scale. The clock is a background decoration, not the main subject. Place it in [scene description]. Describe the full room with furniture, lighting, atmosphere. Do NOT alter the product appearance. At least 60 words. End with: professional interior photography, high quality, 8k, realistic proportions, wall clock as background element"
 }
 ${sceneNote}`
                 }
