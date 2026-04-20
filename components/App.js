@@ -9,7 +9,7 @@ const SCENES = [
   { id: "cafe", label: "咖啡廳風", emoji: "☕", desc: "木質桌面、暖燈、書本" },
 ];
 
-const STEP = { IDLE: "idle", ANALYZING: "analyzing", GENERATING: "generating", DONE: "done", ERROR: "error" };
+const STEP = { IDLE: "idle", ANALYZING: "analyzing", GENERATING: "generating", COMPOSITING: "compositing", DONE: "done", ERROR: "error" };
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 export default function App() {
@@ -25,7 +25,6 @@ export default function App() {
   const [debugInfo, setDebugInfo] = useState("");
   const fileRef = useRef();
 
-  const REPLICATE_KEY = process.env.REPLICATE_KEY;
   const GEMINI_KEY = process.env.NEXT_PUBLIC_GEMINI_KEY;
 
   const handleFile = useCallback((file) => {
@@ -49,50 +48,38 @@ export default function App() {
     handleFile(e.dataTransfer.files[0]);
   };
 
-  const compressImage = (base64, mimeType) => new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      const MAX = 1024;
-      let w = img.width, h = img.height;
-      if (w > MAX || h > MAX) {
-        if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
-        else { w = Math.round(w * MAX / h); h = MAX; }
-      }
-      canvas.width = w; canvas.height = h;
-      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-      resolve(canvas.toDataURL("image/jpeg", 0.85).split(",")[1]);
+  // Composite product onto background image
+  const compositeImages = (productBase64, productMime, backgroundUrl, isWallClock) => new Promise((resolve, reject) => {
+    const canvas = document.createElement("canvas");
+    const SIZE = 1024;
+    canvas.width = SIZE;
+    canvas.height = SIZE;
+    const ctx = canvas.getContext("2d");
+
+    const bgImg = new Image();
+    bgImg.crossOrigin = "anonymous";
+    bgImg.onload = () => {
+      ctx.drawImage(bgImg, 0, 0, SIZE, SIZE);
+
+      const productImg = new Image();
+      productImg.onload = () => {
+        // Wall clock: place upper center, ~25% of canvas
+        // Other products: place lower center, ~30% of canvas
+        const maxSize = SIZE * (isWallClock ? 0.25 : 0.32);
+        const scale = Math.min(maxSize / productImg.width, maxSize / productImg.height);
+        const pw = productImg.width * scale;
+        const ph = productImg.height * scale;
+        const px = (SIZE - pw) / 2;
+        const py = isWallClock ? SIZE * 0.20 : SIZE * 0.55;
+
+        ctx.drawImage(productImg, px, py, pw, ph);
+        resolve(canvas.toDataURL("image/jpeg", 0.95).split(",")[1]);
+      };
+      productImg.onerror = reject;
+      productImg.src = `data:${productMime};base64,${productBase64}`;
     };
-    img.src = `data:${mimeType};base64,${base64}`;
-  });
-
-  const compositeProductOnBackground = (base64, mimeType) => new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      const SIZE = 1024;
-      canvas.width = SIZE;
-      canvas.height = SIZE;
-      const ctx = canvas.getContext("2d");
-
-      // White background
-      ctx.fillStyle = "#f5f5f5";
-      ctx.fillRect(0, 0, SIZE, SIZE);
-
-      // Scale product to ~30% of canvas
-      const maxProductSize = SIZE * 0.30;
-      const scale = Math.min(maxProductSize / img.width, maxProductSize / img.height);
-      const pw = img.width * scale;
-      const ph = img.height * scale;
-
-      // Place product center-top area
-      const px = (SIZE - pw) / 2;
-      const py = SIZE * 0.15;
-
-      ctx.drawImage(img, px, py, pw, ph);
-      resolve(canvas.toDataURL("image/jpeg", 0.92).split(",")[1]);
-    };
-    img.src = `data:${mimeType};base64,${base64}`;
+    bgImg.onerror = reject;
+    bgImg.src = backgroundUrl;
   });
 
   const run = async () => {
@@ -108,6 +95,7 @@ export default function App() {
         ? `用戶指定場景：「${SCENES.find(s => s.id === selectedScene)?.label}」（${SCENES.find(s => s.id === selectedScene)?.desc}）。`
         : "請根據商品自動選擇最適合場景。";
 
+      // Step 1: Gemini analyzes product
       const geminiRes = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,
         {
@@ -118,8 +106,15 @@ export default function App() {
               parts: [
                 { inline_data: { mime_type: imageMediaType, data: imageBase64 } },
                 {
-                  text: `你是電商商品攝影師。分析這個商品圖片，只輸出純 JSON，不要任何說明文字或 markdown：
-{"product_type":"商品類型","is_wall_clock":"true或false，判斷是否為掛鐘","matched_scene":"場景名稱","scene_reason":"原因","prompt":"Keep the product exactly as shown with its original colors, materials, and surface texture completely unchanged. If it is a wall clock, it must be shown mounted and hanging on a wall, mounted on wall in a real interior setting. The clock is 24cm in diameter in real life, so it should appear as a normal-sized wall clock relative to the room — not oversized. Show the full room with furniture, the clock is a natural decorative element on the wall, realistic proportions, interior design photography. Place it in [scene description]. Describe only the background: props, lighting, atmosphere. Do NOT alter the product appearance. At least 60 words. End with: professional product photography, high quality, 8k, commercial photography, the clock should occupy no more than 5% of the final image, small decorative accent,preserve product details"}
+                  text: `你是電商商品攝影師，專注居家類產品（時鐘、盆栽等）。
+分析這個商品，只輸出純 JSON，不要任何說明文字或 markdown：
+{
+  "product_type": "商品類型",
+  "is_wall_clock": "true或false，判斷是否為掛鐘",
+  "matched_scene": "場景名稱（中文）",
+  "scene_reason": "選擇原因（10字內）",
+  "background_prompt": "英文純場景背景描述，不要包含商品，只描述空間、牆面、家具、燈光、氛圍，至少50字，結尾加：interior design photography, high quality, 8k, no people"
+}
 ${sceneNote}`
                 }
               ]
@@ -130,40 +125,35 @@ ${sceneNote}`
       );
 
       const geminiData = await geminiRes.json();
-
-      // Show debug info
       const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || "";
       const errorDetail = geminiData.error?.message || "";
       setDebugInfo(errorDetail || rawText.substring(0, 200));
 
       if (errorDetail) throw new Error(`Gemini 錯誤：${errorDetail}`);
-      if (!rawText) throw new Error("Gemini 沒有回傳內容，請確認 API Key 正確");
+      if (!rawText) throw new Error("Gemini 沒有回傳內容");
 
       const match = rawText.match(/\{[\s\S]*\}/);
-      if (!match) throw new Error(`無法解析回應，內容：${rawText.substring(0, 100)}`);
+      if (!match) throw new Error(`無法解析回應：${rawText.substring(0, 100)}`);
 
-      const parsed = JSON.parse(match[0]);
+      let parsed;
+      try { parsed = JSON.parse(match[0]); }
+      catch(e) { throw new Error(`JSON 解析失敗：${match[0].substring(0, 100)}`); }
+
       setAnalysis(parsed);
       setStep(STEP.GENERATING);
 
+      // Step 2: Generate background scene with flux-schnell
       const replicateRes = await fetch("/api/replicate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "create",
-          input: {
-            prompt: parsed.prompt,
-            input_image: `data:image/jpeg;base64,${parsed.is_wall_clock === "true" ? await compositeProductOnBackground(imageBase64, imageMediaType) : await compressImage(imageBase64, imageMediaType)}`,
-            aspect_ratio: "1:1",
-            output_format: "jpg",
-            output_quality: 100,
-            safety_tolerance: 2,
-          }
+          prompt: parsed.background_prompt,
         }),
       });
 
       const prediction = await replicateRes.json();
-      if (!prediction.id) throw new Error(prediction.detail || "無法建立 Replicate 任務");
+      if (!prediction.id) throw new Error(prediction.detail || "無法建立生成任務");
 
       let result = prediction;
       let attempts = 0;
@@ -178,14 +168,16 @@ ${sceneNote}`
         attempts++;
       }
 
-      if (result.status === "succeeded") {
-        const imgUrl = Array.isArray(result.output) ? result.output[0] : result.output;
-        if (!imgUrl) throw new Error(`成功但無圖片，output: ${JSON.stringify(result.output)}`);
-        setGeneratedImage(imgUrl);
-        setStep(STEP.DONE);
-      } else {
-        throw new Error(result.error || `狀態：${result.status}，output：${JSON.stringify(result.output)}`);
-      }
+      const bgUrl = Array.isArray(result.output) ? result.output[0] : result.output;
+      if (!bgUrl) throw new Error("背景圖生成失敗");
+
+      // Step 3: Composite product onto background
+      setStep(STEP.COMPOSITING);
+      const isWallClock = parsed.is_wall_clock === "true";
+      const finalBase64 = await compositeImages(imageBase64, imageMediaType, bgUrl, isWallClock);
+      setGeneratedImage(`data:image/jpeg;base64,${finalBase64}`);
+      setStep(STEP.DONE);
+
     } catch (err) {
       setErrorMsg(err.message);
       setStep(STEP.ERROR);
@@ -198,7 +190,13 @@ ${sceneNote}`
     setSelectedScene(null); setErrorMsg(""); setDebugInfo("");
   };
 
-  const canRun = image && step !== STEP.ANALYZING && step !== STEP.GENERATING;
+  const canRun = image && step !== STEP.ANALYZING && step !== STEP.GENERATING && step !== STEP.COMPOSITING;
+
+  const statusText = {
+    [STEP.ANALYZING]: "🔍 分析商品中...",
+    [STEP.GENERATING]: "🎨 生成場景背景中...",
+    [STEP.COMPOSITING]: "✂️ 合成商品到場景中...",
+  };
 
   return (
     <div style={{ minHeight: "100vh", background: "#f7f4ef", fontFamily: "Georgia, serif", color: "#2c2a27" }}>
@@ -214,7 +212,7 @@ ${sceneNote}`
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
             <div>
-              <div style={{ fontSize: 10, letterSpacing: 3, opacity: 0.4, marginBottom: 10, textTransform: "uppercase" }}>01 — 上傳商品照片</div>
+              <div style={{ fontSize: 10, letterSpacing: 3, opacity: 0.4, marginBottom: 10, textTransform: "uppercase" }}>01 — 上傳商品照片（建議去背）</div>
               <div
                 onClick={() => fileRef.current.click()}
                 onDragOver={e => { e.preventDefault(); setDragOver(true); }}
@@ -245,7 +243,7 @@ ${sceneNote}`
             </div>
 
             <button onClick={run} disabled={!canRun} style={{ padding: "16px", border: "none", borderRadius: 2, background: !canRun ? "#c8bfb0" : "#2c2a27", color: "#f7f4ef", fontSize: 12, letterSpacing: 2, textTransform: "uppercase", cursor: !canRun ? "not-allowed" : "pointer" }}>
-              {step === STEP.ANALYZING ? "🔍 分析商品中..." : step === STEP.GENERATING ? "🎨 生成圖片中..." : "✦ 開始生成商品圖"}
+              {statusText[step] || "✦ 開始生成商品圖"}
             </button>
 
             {step === STEP.DONE && (
@@ -263,11 +261,11 @@ ${sceneNote}`
               </div>
             )}
 
-            {(step === STEP.ANALYZING || step === STEP.GENERATING) && (
+            {(step === STEP.ANALYZING || step === STEP.GENERATING || step === STEP.COMPOSITING) && (
               <div style={{ background: "#faf8f5", border: "1.5px solid #e8e0d5", borderRadius: 4, minHeight: 400, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16 }}>
                 <div style={{ width: 36, height: 36, border: "2px solid #e8e0d5", borderTop: "2px solid #8b7355", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
-                <div style={{ fontSize: 12, letterSpacing: 2, opacity: 0.5 }}>{step === STEP.ANALYZING ? "ANALYZING PRODUCT..." : "GENERATING IMAGE..."}</div>
-                {analysis && step === STEP.GENERATING && (
+                <div style={{ fontSize: 12, letterSpacing: 2, opacity: 0.5 }}>{statusText[step]}</div>
+                {analysis && (
                   <div style={{ textAlign: "center", fontSize: 12, opacity: 0.6 }}>
                     <div style={{ fontWeight: 600, marginBottom: 4 }}>{analysis.product_type}</div>
                     <div>{analysis.matched_scene} — {analysis.scene_reason}</div>
@@ -286,13 +284,12 @@ ${sceneNote}`
                   <div style={{ background: "#faf8f5", border: "1.5px solid #e8e0d5", borderRadius: 4, padding: 20 }}>
                     <div style={{ fontSize: 10, letterSpacing: 2, opacity: 0.4, marginBottom: 8, textTransform: "uppercase" }}>AI 分析</div>
                     <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>{analysis.product_type}</div>
-                    <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 10 }}>場景：{analysis.matched_scene} — {analysis.scene_reason}</div>
-                    <div style={{ background: "#2c2a27", color: "#b8d4b0", borderRadius: 2, padding: "10px 12px", fontSize: 10, lineHeight: 1.7, fontFamily: "monospace" }}>{analysis.prompt}</div>
+                    <div style={{ fontSize: 12, opacity: 0.6 }}>場景：{analysis.matched_scene} — {analysis.scene_reason}</div>
                   </div>
                 )}
                 <div style={{ display: "flex", gap: 8 }}>
-                  <a href={generatedImage} target="_blank" rel="noreferrer" style={{ flex: 1, textAlign: "center", textDecoration: "none", display: "block", padding: "12px", background: "#8b7355", color: "#fff", borderRadius: 2, fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }}>↓ 下載圖片</a>
-                  <button onClick={() => navigator.clipboard.writeText(analysis?.prompt || "")} style={{ flex: 1, padding: "12px", border: "1.5px solid #c8bfb0", borderRadius: 2, background: "transparent", fontSize: 11, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer", color: "#2c2a27" }}>⊕ 複製 Prompt</button>
+                  <a href={generatedImage} download="product-scene.jpg" style={{ flex: 1, textAlign: "center", textDecoration: "none", display: "block", padding: "12px", background: "#8b7355", color: "#fff", borderRadius: 2, fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }}>↓ 下載圖片</a>
+                  <button onClick={reset} style={{ flex: 1, padding: "12px", border: "1.5px solid #c8bfb0", borderRadius: 2, background: "transparent", fontSize: 11, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer", color: "#2c2a27" }}>↺ 重新上傳</button>
                 </div>
               </>
             )}
@@ -302,9 +299,7 @@ ${sceneNote}`
                 <div style={{ fontSize: 13, color: "#c04040", marginBottom: 8 }}>生成失敗</div>
                 <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 8 }}>{errorMsg}</div>
                 {debugInfo && (
-                  <div style={{ background: "#2c2a27", color: "#f0c0c0", borderRadius: 2, padding: "8px 10px", fontSize: 10, fontFamily: "monospace", lineHeight: 1.6, marginBottom: 12, wordBreak: "break-all" }}>
-                    {debugInfo}
-                  </div>
+                  <div style={{ background: "#2c2a27", color: "#f0c0c0", borderRadius: 2, padding: "8px 10px", fontSize: 10, fontFamily: "monospace", lineHeight: 1.6, marginBottom: 12, wordBreak: "break-all" }}>{debugInfo}</div>
                 )}
                 <button onClick={run} style={{ padding: "10px 20px", background: "#c04040", color: "#fff", border: "none", borderRadius: 2, fontSize: 11, cursor: "pointer" }}>重試</button>
               </div>
