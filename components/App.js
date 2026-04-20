@@ -81,7 +81,7 @@ export default function App() {
       const pw = img.width * scale;
       const ph = img.height * scale;
       const px = (SIZE - pw) / 2;
-      const py = SIZE * 0.15;
+      const py = SIZE * 0.08;
       ctx.drawImage(img, px, py, pw, ph);
       resolve(canvas.toDataURL("image/jpeg", 0.92).split(",")[1]);
     };
