@@ -137,7 +137,7 @@ export default function App() {
   "is_wall_clock": "true或false，判斷是否為掛鐘",
   "matched_scene": "場景名稱（中文）",
   "scene_reason": "選擇原因（10字內）",
-  "prompt": "Interior scene background only, no products, no clocks, no plants visible in foreground. Describe the scene in detail: wall texture, furniture, lighting, atmosphere, props. At least 60 words. End with: interior design photography, high quality, 8k, no people"
+  "prompt": "If is_wall_clock is true: a wide interior room with a large empty wall in the center taking up most of the image, suitable for hanging a clock. Show the room context below the wall: furniture, floor, small decorative items. The wall must be clean and empty with no objects on it. If not a wall clock: a styled interior scene with a surface like a desk, shelf or table in the lower half. No people. At least 60 words. End with: interior design photography, high quality, 8k"
 }
 ${sceneNote}`
                 }
@@ -230,7 +230,7 @@ ${sceneNote}`
       const pw = productImg.width * scale;
       const ph = productImg.height * scale;
       const px = (SIZE - pw) / 2;
-      const py = isWallClock ? SIZE * 0.18 : SIZE * 0.55;
+      const py = isWallClock ? SIZE * 0.35 : SIZE * 0.55;
       ctx.drawImage(productImg, px, py, pw, ph);
 
       const finalDataUrl = canvas.toDataURL("image/jpeg", 0.95);
