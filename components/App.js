@@ -90,7 +90,7 @@ export default function App() {
                 { inline_data: { mime_type: imageMediaType, data: imageBase64 } },
                 {
                   text: `你是電商商品攝影師。分析這個商品圖片，只輸出純 JSON，不要任何說明文字或 markdown：
-{"product_type":"商品類型","is_wall_clock":"true或false，判斷是否為掛鐘","matched_scene":"場景名稱","scene_reason":"原因","prompt":"Keep the product exactly as shown with its original colors, materials, and surface texture completely unchanged. If it is a wall clock, it must be shown mounted and hanging on a wall, occupying about 1/3 of the frame, with the surrounding scene visible and well-composed, showing the full room context. Place it in [scene description]. Describe only the background: props, lighting, atmosphere. Do NOT alter the product appearance. At least 60 words. End with: professional product photography, high quality, 8k, commercial photography, preserve product details"}
+{"product_type":"商品類型","is_wall_clock":"true或false，判斷是否為掛鐘","matched_scene":"場景名稱","scene_reason":"原因","prompt":"Keep the product exactly as shown with its original colors, materials, and surface texture completely unchanged. If it is a wall clock, it must be shown mounted and hanging on a wall, occupying about 1/4 to 1/5 of the frame, appearing as a natural wall decoration in a wide room shot, with plenty of surrounding scene visible. Place it in [scene description]. Describe only the background: props, lighting, atmosphere. Do NOT alter the product appearance. At least 60 words. End with: professional product photography, high quality, 8k, commercial photography, preserve product details"}
 ${sceneNote}`
                 }
               ]
