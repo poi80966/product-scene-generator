@@ -80,7 +80,7 @@ export default function App() {
       ctx.fillStyle = "#f5f5f5";
       ctx.fillRect(0, 0, SIZE, SIZE);
       
-      // 🌟 將時鐘尺寸微調到 12%，這是室內中景最不容易翻車的黃金比例
+      // 維持 12% 的比例，這是 25cm 物件在 200cm 視野中最正確的物理數學比例
       const maxProductSize = SIZE * 0.12; 
       
       const scale = Math.min(maxProductSize / img.width, maxProductSize / img.height);
@@ -88,7 +88,8 @@ export default function App() {
       const ph = img.height * scale;
       const px = (SIZE - pw) / 2;
       
-      const py = SIZE * 0.20; 
+      // 將時鐘稍微往下放一點 (25%)，預留上方空間，並讓它更靠近下方的「大型傢俱比例尺」
+      const py = SIZE * 0.25; 
       
       ctx.drawImage(img, px, py, pw, ph);
       resolve(canvas.toDataURL("image/jpeg", 0.92).split(",")[1]);
@@ -170,7 +171,7 @@ export default function App() {
   "is_wall_clock": "true或false，判斷是否為掛鐘",
   "matched_scene": "場景名稱（中文）",
   "scene_reason": "選擇原因（10字內）",
-  "prompt": "Keep the product exactly as shown with its original colors, materials and surface texture unchanged. If it is a wall clock, it must be mounted on a wall. Create a medium interior shot (50mm lens) focusing on a stylish wall section. The clock should be a prominent decorative focal point, but note that the physical clock has a diameter of about 25cm. Include a sideboard, a wooden shelf, or a potted plant just below or to the side of the clock. MUST ensure the furniture is scaled accurately relative to a 25cm clock (do not generate miniature furniture). Create a balanced interior vignette. Ensure consistent lighting between the product and the room, natural soft drop shadows, seamless blending, photorealistic materials. Do NOT alter the product appearance. At least 60 words. End with: professional interior photography, medium shot, stylish vignette, accurate furniture scale, realistic proportions, high quality, 8k"
+  "prompt": "Keep the product exactly as shown with its original colors, materials and surface texture unchanged. If it is a wall clock, it must be mounted on a wall. IMPORTANT SCALE ANCHOR: This image represents a wall space about 2 meters (200cm) wide. To enforce the correct scale for the 25cm clock, you MUST generate a standard-sized 3-seater sofa, a queen-size bed, or a large dining table at the bottom of the image. The clock is hanging on the wall above this large furniture. Do NOT generate tiny shelves or mini objects. The large human-scale furniture must ground the scale realistically. Ensure consistent lighting, natural soft drop shadows, seamless blending, photorealistic materials. Do NOT alter the product appearance. At least 60 words. End with: professional interior photography, accurate human-scale furniture anchor, standard sized sofa, realistic room proportions, high quality, 8k"
 }
 ${sceneNote}`
                 }
@@ -399,7 +400,7 @@ ${sceneNote}`
               {statusText[step] || "✦ 開始生成商品圖"}
             </button>
 
-            {step === STEP.DONE && (
+            {step === DONE && (
               <button onClick={reset} style={{ padding: "14px", border: "1.5px solid #c8bfb0", borderRadius: 2, background: "transparent", fontSize: 12, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer", color: "#2c2a27" }}>↺ 重新上傳</button>
             )}
           </div>
