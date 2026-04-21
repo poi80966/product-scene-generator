@@ -80,17 +80,16 @@ export default function App() {
       ctx.fillStyle = "#f5f5f5";
       ctx.fillRect(0, 0, SIZE, SIZE);
       
-      // 🌟 終極比例調整：將時鐘強制縮小到畫面的 8% 
-      // 這是 25cm 物件在標準室內攝影中最真實的相對像素大小
-      const maxProductSize = SIZE * 0.08; 
+      // 🌟 將時鐘尺寸微調到極小的 3%，在物理畫布上模擬「10公尺牆上的30公分時鐘」
+      const maxProductSize = SIZE * 0.03; 
       
       const scale = Math.min(maxProductSize / img.width, maxProductSize / img.height);
       const pw = img.width * scale;
       const ph = img.height * scale;
       
-      // 放在畫面正中央偏上
+      // 放在畫面正中央偏上，靠近下方大型傢俱比例尺
       const px = (SIZE / 2) - (pw / 2);
-      const py = SIZE * 0.35; // 高度設定在 35%，讓下方有足夠空間生成大型傢俱
+      const py = SIZE * 0.20; // 高度設定在 20%，讓下方有足夠空間生成大型傢俱
       
       ctx.drawImage(img, px, py, pw, ph);
       resolve(canvas.toDataURL("image/jpeg", 0.92).split(",")[1]);
@@ -172,7 +171,7 @@ export default function App() {
   "is_wall_clock": "true或false，判斷是否為掛鐘",
   "matched_scene": "場景名稱（中文）",
   "scene_reason": "選擇原因（10字內）",
-  "prompt": "Keep the product exactly as shown with its original colors, materials and surface texture unchanged. If it is a wall clock, it must be mounted on a wall. The clock is a VERY SMALL decorative element (only 25cm diameter). Generate a spacious interior room. To ensure realistic scaling, MUST include a standard large 3-seater sofa, a queen-size bed, or a large dining table directly below the clock. Ensure the furniture is massive compared to the small clock. Ensure consistent lighting, natural soft drop shadows, seamless blending, photorealistic materials. Do NOT alter the product appearance. At least 60 words. End with: professional interior photography, accurate human-scale furniture, small wall clock, realistic room proportions, high quality, 8k"
+  "prompt": "Keep the product exactly as shown with its original colors, materials and surface texture unchanged. If it is a wall clock, it must be mounted on a wall. IMPORTANT RELATIVE SCALE: The small wall clock is exactly 1/50th (one-fiftieth) the total visible width of the wall. Create an expansive, massive interior wall space. The clock is a tiny, minimalist accent element on this large wall. To anchor the scale, include very large, standard-sized human furniture below the clock, such as an extra-long 4-seat sofa or a long 10-person dining table. The wide perspective makes the clock appear minute. Ensure consistent lighting, natural soft drop shadows, seamless blending, photorealistic materials. Do NOT alter the product appearance. At least 60 words. End with: professional interior photography, ultra-wide perspective, minute wall accent, large anchor furniture, high quality, 8k"
 }
 ${sceneNote}`
                 }
