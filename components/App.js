@@ -80,22 +80,17 @@ export default function App() {
       ctx.fillStyle = "#f5f5f5";
       ctx.fillRect(0, 0, SIZE, SIZE);
       
-      // 🌟 實作「24 宮格」切分邏輯 (6 欄 x 4 列)
-      const cols = 6;
-      const rows = 4;
-      const cellWidth = SIZE / cols;  // 每個格子寬約 170px (佔比 16.6%)
-      const cellHeight = SIZE / rows; // 每個格子高 256px
-
-      // 強制時鐘的尺寸填滿「剛好 1 個格子」的寬度
-      const maxProductSize = cellWidth * 0.95; 
+      // 🌟 終極比例調整：將時鐘強制縮小到畫面的 8% 
+      // 這是 25cm 物件在標準室內攝影中最真實的相對像素大小
+      const maxProductSize = SIZE * 0.08; 
       
       const scale = Math.min(maxProductSize / img.width, maxProductSize / img.height);
       const pw = img.width * scale;
       const ph = img.height * scale;
       
-      // 將時鐘精準放置在水平正中間，垂直方向放在第一列偏下
+      // 放在畫面正中央偏上
       const px = (SIZE / 2) - (pw / 2);
-      const py = cellHeight * 1.1; 
+      const py = SIZE * 0.35; // 高度設定在 35%，讓下方有足夠空間生成大型傢俱
       
       ctx.drawImage(img, px, py, pw, ph);
       resolve(canvas.toDataURL("image/jpeg", 0.92).split(",")[1]);
@@ -177,7 +172,7 @@ export default function App() {
   "is_wall_clock": "true或false，判斷是否為掛鐘",
   "matched_scene": "場景名稱（中文）",
   "scene_reason": "選擇原因（10字內）",
-  "prompt": "Keep the product exactly as shown with its original colors, materials and surface texture unchanged. If it is a wall clock, it must be mounted on a wall. The clock is a small decorative element. Generate a spacious interior room. To ensure realistic scaling, MUST include a standard large 3-seater sofa, a queen-size bed, or a large dining table in the lower half of the image. The clock hangs high above the furniture. Do NOT draw any grid lines, guidelines, text, or borders on the image. Ensure consistent lighting, natural soft drop shadows, seamless blending, photorealistic materials. Do NOT alter the product appearance. At least 60 words. End with: professional interior photography, clean unannotated image, realistic room proportions, high quality, 8k"
+  "prompt": "Keep the product exactly as shown with its original colors, materials and surface texture unchanged. If it is a wall clock, it must be mounted on a wall. The clock is a VERY SMALL decorative element (only 25cm diameter). Generate a spacious interior room. To ensure realistic scaling, MUST include a standard large 3-seater sofa, a queen-size bed, or a large dining table directly below the clock. Ensure the furniture is massive compared to the small clock. Ensure consistent lighting, natural soft drop shadows, seamless blending, photorealistic materials. Do NOT alter the product appearance. At least 60 words. End with: professional interior photography, accurate human-scale furniture, small wall clock, realistic room proportions, high quality, 8k"
 }
 ${sceneNote}`
                 }
