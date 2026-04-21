@@ -80,26 +80,22 @@ export default function App() {
       ctx.fillStyle = "#f5f5f5";
       ctx.fillRect(0, 0, SIZE, SIZE);
       
-      // 🌟 實作「12 宮格」切分邏輯 (4 欄 x 3 列)
-      const cols = 4;
-      const rows = 3;
-      const cellWidth = SIZE / cols;  // 每個格子寬 256px (佔比 25%)
-      const cellHeight = SIZE / rows; // 每個格子高約 341px
+      // 🌟 實作「24 宮格」切分邏輯 (6 欄 x 4 列)
+      const cols = 6;
+      const rows = 4;
+      const cellWidth = SIZE / cols;  // 每個格子寬約 170px (佔比 16.6%)
+      const cellHeight = SIZE / rows; // 每個格子高 256px
 
-      // 強制時鐘的尺寸填滿「剛好 1 個格子」的寬度 (預留一點邊緣呼吸空間)
-      const maxProductSize = cellWidth * 0.85; 
+      // 強制時鐘的尺寸填滿「剛好 1 個格子」的寬度
+      const maxProductSize = cellWidth * 0.95; 
       
       const scale = Math.min(maxProductSize / img.width, maxProductSize / img.height);
       const pw = img.width * scale;
       const ph = img.height * scale;
       
-      // 指定時鐘放置在第 1 列 (上方往下數第2排)、第 1 欄 (偏左中) 或第 2 欄 (偏右中)
-      // 這裡設定放在 (Col 1, Row 0.5) 讓它在視覺的黃金交叉點
-      const targetCol = 1.5; 
-      const targetRow = 0.5;
-
-      const px = (targetCol * cellWidth) - (pw / 2);
-      const py = (targetRow * cellHeight) + (cellHeight - ph) / 2;
+      // 將時鐘精準放置在水平正中間，垂直方向放在第一列偏下
+      const px = (SIZE / 2) - (pw / 2);
+      const py = cellHeight * 1.1; 
       
       ctx.drawImage(img, px, py, pw, ph);
       resolve(canvas.toDataURL("image/jpeg", 0.92).split(",")[1]);
@@ -181,7 +177,7 @@ export default function App() {
   "is_wall_clock": "true或false，判斷是否為掛鐘",
   "matched_scene": "場景名稱（中文）",
   "scene_reason": "選擇原因（10字內）",
-  "prompt": "Keep the product exactly as shown with its original colors, materials and surface texture unchanged. If it is a wall clock, it must be mounted on a wall. 🌟 IMPORTANT COMPOSITION RULE: The image canvas is mathematically divided into a 12-grid layout (4 columns x 3 rows). The clock strictly occupies exactly 1 grid cell. You MUST generate a realistic room environment that respects this grid scale. Since the clock is only 1 grid wide, large furniture (like a wide sofa, a long dining table, or a large bookcase) MUST span across 2 to 3 grids in the bottom section of the image. Do not generate miniature furniture. Ground the scene realistically based on the grid proportion. Ensure consistent lighting, natural soft drop shadows, seamless blending, photorealistic materials. Do NOT alter the product appearance. At least 60 words. End with: professional interior photography, strict 12-grid proportion, accurate human-scale furniture, realistic room proportions, high quality, 8k"
+  "prompt": "Keep the product exactly as shown with its original colors, materials and surface texture unchanged. If it is a wall clock, it must be mounted on a wall. The clock is a small decorative element. Generate a spacious interior room. To ensure realistic scaling, MUST include a standard large 3-seater sofa, a queen-size bed, or a large dining table in the lower half of the image. The clock hangs high above the furniture. Do NOT draw any grid lines, guidelines, text, or borders on the image. Ensure consistent lighting, natural soft drop shadows, seamless blending, photorealistic materials. Do NOT alter the product appearance. At least 60 words. End with: professional interior photography, clean unannotated image, realistic room proportions, high quality, 8k"
 }
 ${sceneNote}`
                 }
