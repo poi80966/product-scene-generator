@@ -80,16 +80,26 @@ export default function App() {
       ctx.fillStyle = "#f5f5f5";
       ctx.fillRect(0, 0, SIZE, SIZE);
       
-      // 維持 12% 的比例，這是 25cm 物件在 200cm 視野中最正確的物理數學比例
-      const maxProductSize = SIZE * 0.12; 
+      // 🌟 實作「12 宮格」切分邏輯 (4 欄 x 3 列)
+      const cols = 4;
+      const rows = 3;
+      const cellWidth = SIZE / cols;  // 每個格子寬 256px (佔比 25%)
+      const cellHeight = SIZE / rows; // 每個格子高約 341px
+
+      // 強制時鐘的尺寸填滿「剛好 1 個格子」的寬度 (預留一點邊緣呼吸空間)
+      const maxProductSize = cellWidth * 0.85; 
       
       const scale = Math.min(maxProductSize / img.width, maxProductSize / img.height);
       const pw = img.width * scale;
       const ph = img.height * scale;
-      const px = (SIZE - pw) / 2;
       
-      // 將時鐘稍微往下放一點 (25%)，預留上方空間，並讓它更靠近下方的「大型傢俱比例尺」
-      const py = SIZE * 0.25; 
+      // 指定時鐘放置在第 1 列 (上方往下數第2排)、第 1 欄 (偏左中) 或第 2 欄 (偏右中)
+      // 這裡設定放在 (Col 1, Row 0.5) 讓它在視覺的黃金交叉點
+      const targetCol = 1.5; 
+      const targetRow = 0.5;
+
+      const px = (targetCol * cellWidth) - (pw / 2);
+      const py = (targetRow * cellHeight) + (cellHeight - ph) / 2;
       
       ctx.drawImage(img, px, py, pw, ph);
       resolve(canvas.toDataURL("image/jpeg", 0.92).split(",")[1]);
@@ -171,7 +181,7 @@ export default function App() {
   "is_wall_clock": "true或false，判斷是否為掛鐘",
   "matched_scene": "場景名稱（中文）",
   "scene_reason": "選擇原因（10字內）",
-  "prompt": "Keep the product exactly as shown with its original colors, materials and surface texture unchanged. If it is a wall clock, it must be mounted on a wall. IMPORTANT SCALE ANCHOR: This image represents a wall space about 2 meters (200cm) wide. To enforce the correct scale for the 25cm clock, you MUST generate a standard-sized 3-seater sofa, a queen-size bed, or a large dining table at the bottom of the image. The clock is hanging on the wall above this large furniture. Do NOT generate tiny shelves or mini objects. The large human-scale furniture must ground the scale realistically. Ensure consistent lighting, natural soft drop shadows, seamless blending, photorealistic materials. Do NOT alter the product appearance. At least 60 words. End with: professional interior photography, accurate human-scale furniture anchor, standard sized sofa, realistic room proportions, high quality, 8k"
+  "prompt": "Keep the product exactly as shown with its original colors, materials and surface texture unchanged. If it is a wall clock, it must be mounted on a wall. 🌟 IMPORTANT COMPOSITION RULE: The image canvas is mathematically divided into a 12-grid layout (4 columns x 3 rows). The clock strictly occupies exactly 1 grid cell. You MUST generate a realistic room environment that respects this grid scale. Since the clock is only 1 grid wide, large furniture (like a wide sofa, a long dining table, or a large bookcase) MUST span across 2 to 3 grids in the bottom section of the image. Do not generate miniature furniture. Ground the scene realistically based on the grid proportion. Ensure consistent lighting, natural soft drop shadows, seamless blending, photorealistic materials. Do NOT alter the product appearance. At least 60 words. End with: professional interior photography, strict 12-grid proportion, accurate human-scale furniture, realistic room proportions, high quality, 8k"
 }
 ${sceneNote}`
                 }
@@ -400,7 +410,7 @@ ${sceneNote}`
               {statusText[step] || "✦ 開始生成商品圖"}
             </button>
 
-            {step === DONE && (
+            {step === STEP.DONE && (
               <button onClick={reset} style={{ padding: "14px", border: "1.5px solid #c8bfb0", borderRadius: 2, background: "transparent", fontSize: 12, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer", color: "#2c2a27" }}>↺ 重新上傳</button>
             )}
           </div>
