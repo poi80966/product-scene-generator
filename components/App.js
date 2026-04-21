@@ -80,15 +80,14 @@ export default function App() {
       ctx.fillStyle = "#f5f5f5";
       ctx.fillRect(0, 0, SIZE, SIZE);
       
-      // 將時鐘尺寸設定為畫布的 16% (中等比例)
-      const maxProductSize = SIZE * 0.16; 
+      // 🌟 將時鐘尺寸微調到 12%，這是室內中景最不容易翻車的黃金比例
+      const maxProductSize = SIZE * 0.12; 
       
       const scale = Math.min(maxProductSize / img.width, maxProductSize / img.height);
       const pw = img.width * scale;
       const ph = img.height * scale;
       const px = (SIZE - pw) / 2;
       
-      // 將 Y 軸設定在 20% 位置，適合中景構圖
       const py = SIZE * 0.20; 
       
       ctx.drawImage(img, px, py, pw, ph);
@@ -171,7 +170,7 @@ export default function App() {
   "is_wall_clock": "true或false，判斷是否為掛鐘",
   "matched_scene": "場景名稱（中文）",
   "scene_reason": "選擇原因（10字內）",
-  "prompt": "Keep the product exactly as shown with its original colors, materials and surface texture unchanged. If it is a wall clock, it must be mounted on a wall. Create a medium interior shot (50mm lens) focusing on a stylish wall section. The clock should be a prominent decorative focal point. Include a sideboard, a wooden shelf, or a potted plant just below or to the side of the clock to establish a realistic scale, but do NOT generate a massive cavernous room. Create an intimate interior vignette. Ensure consistent lighting between the product and the room, natural soft drop shadows, seamless blending, photorealistic materials. Do NOT alter the product appearance. At least 60 words. End with: professional interior photography, medium shot, stylish vignette, realistic proportions, high quality, 8k"
+  "prompt": "Keep the product exactly as shown with its original colors, materials and surface texture unchanged. If it is a wall clock, it must be mounted on a wall. Create a medium interior shot (50mm lens) focusing on a stylish wall section. The clock should be a prominent decorative focal point, but note that the physical clock has a diameter of about 25cm. Include a sideboard, a wooden shelf, or a potted plant just below or to the side of the clock. MUST ensure the furniture is scaled accurately relative to a 25cm clock (do not generate miniature furniture). Create a balanced interior vignette. Ensure consistent lighting between the product and the room, natural soft drop shadows, seamless blending, photorealistic materials. Do NOT alter the product appearance. At least 60 words. End with: professional interior photography, medium shot, stylish vignette, accurate furniture scale, realistic proportions, high quality, 8k"
 }
 ${sceneNote}`
                 }
