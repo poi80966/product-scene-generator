@@ -80,16 +80,16 @@ export default function App() {
       ctx.fillStyle = "#f5f5f5";
       ctx.fillRect(0, 0, SIZE, SIZE);
       
-      // 🌟 將時鐘尺寸微調到極小的 3%，在物理畫布上模擬「10公尺牆上的30公分時鐘」
-      const maxProductSize = SIZE * 0.03; 
+      // 🌟 將時鐘尺寸設定為畫布的 16% (中等比例)
+      const maxProductSize = SIZE * 0.16; 
       
       const scale = Math.min(maxProductSize / img.width, maxProductSize / img.height);
       const pw = img.width * scale;
       const ph = img.height * scale;
+      const px = (SIZE - pw) / 2;
       
-      // 放在畫面正中央偏上，靠近下方大型傢俱比例尺
-      const px = (SIZE / 2) - (pw / 2);
-      const py = SIZE * 0.20; // 高度設定在 20%，讓下方有足夠空間生成大型傢俱
+      // 將 Y 軸設定在 20% 位置，適合中景構圖
+      const py = SIZE * 0.20; 
       
       ctx.drawImage(img, px, py, pw, ph);
       resolve(canvas.toDataURL("image/jpeg", 0.92).split(",")[1]);
@@ -164,6 +164,7 @@ export default function App() {
               parts: [
                 { inline_data: { mime_type: imageMediaType, data: imageBase64 } },
                 {
+                  // 🌟 修改這裡：將 Prompt 中的視角從廣角改為中景 (Medium Shot)，並強調時鐘凸顯為焦點
                   text: `你是電商商品攝影師，專注居家類產品（時鐘、盆栽等）。
 分析這個商品，只輸出純 JSON，不要任何說明文字或 markdown：
 {
@@ -171,7 +172,7 @@ export default function App() {
   "is_wall_clock": "true或false，判斷是否為掛鐘",
   "matched_scene": "場景名稱（中文）",
   "scene_reason": "選擇原因（10字內）",
-  "prompt": "Keep the product exactly as shown with its original colors, materials and surface texture unchanged. If it is a wall clock, it must be mounted on a wall. IMPORTANT RELATIVE SCALE: The small wall clock is exactly 1/50th (one-fiftieth) the total visible width of the wall. Create an expansive, massive interior wall space. The clock is a tiny, minimalist accent element on this large wall. To anchor the scale, include very large, standard-sized human furniture below the clock, such as an extra-long 4-seat sofa or a long 10-person dining table. The wide perspective makes the clock appear minute. Ensure consistent lighting, natural soft drop shadows, seamless blending, photorealistic materials. Do NOT alter the product appearance. At least 60 words. End with: professional interior photography, ultra-wide perspective, minute wall accent, large anchor furniture, high quality, 8k"
+  "prompt": "Keep the product exactly as shown with its original colors, materials and surface texture unchanged. If it is a wall clock, it must be mounted on a wall. Create a medium interior shot (50mm lens) focusing on a stylish wall section. The clock should be a prominent decorative focal point, sized realistically relative to the room, with surrounding furniture like a sideboard or a shelf establishing the scale. The background should be structured to vignette the clock as the central item of interest. Place it in [scene description]. Describe the vignette section with furniture, lighting, and atmosphere to frame the clock. Do NOT alter the product appearance. At least 60 words. End with: professional interior photography, medium shot, stylish vignette, clock as central focal point, realistic proportions, high quality, 8k"
 }
 ${sceneNote}`
                 }
