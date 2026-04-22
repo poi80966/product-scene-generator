@@ -146,7 +146,8 @@ export default function App() {
     );
     const data = await res.json();
     if (data.error) throw new Error(`Nano Banana 錯誤：${data.error.message}`);
-    const parts = data.candidates?.[0]?.content?.parts || [];
+    const resParts = data.candidates?.[0]?.content?.parts || [];
+const imgPart = resParts.find(p => p.inlineData?.mimeType?.startsWith("image/"));
     const imgPart = parts.find(p => p.inlineData?.mimeType?.startsWith("image/"));
     if (!imgPart) throw new Error("Nano Banana 沒有回傳圖片");
     return `data:${imgPart.inlineData.mimeType};base64,${imgPart.inlineData.data}`;
