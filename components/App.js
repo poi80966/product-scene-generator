@@ -124,19 +124,22 @@ export default function App() {
     return btoa(binary);
   };
 
-  const generateWithNanaBanana = async (imageBase64, mimeType, prompt) => {
+  const generateWithNanaBanana = async (imageBase64, mimeType, prompt, layoutB64, layoutMime) => {
+    const parts = [];
+    parts.push({ inline_data: { mime_type: mimeType, data: imageBase64 } });
+    if (layoutB64) {
+      parts.push({ inline_data: { mime_type: layoutMime || "image/jpeg", data: layoutB64 } });
+      parts.push({ text: "The first image is the product. The second image is a composition layout reference — follow it strictly for product position and scale. Medium shot, clock clearly visible. The clock should be smaller than any potted plants in the scene. " + prompt + " Generate a photorealistic product scene image." });
+    } else {
+      parts.push({ text: "Medium shot, clock clearly visible. The clock should be smaller than any potted plants in the scene. " + prompt + " Generate a photorealistic product scene image." });
+    }
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=${GEMINI_IMAGE_KEY}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          contents: [{
-            parts: [
-              { inline_data: { mime_type: mimeType, data: imageBase64 } },
-              { text: prompt + " Generate a photorealistic product scene image." }
-            ]
-          }],
+          contents: [{ parts }],
           generationConfig: { responseModalities: ["IMAGE", "TEXT"] }
         })
       }
