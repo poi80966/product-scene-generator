@@ -21,15 +21,11 @@ export default function App() {
   const [analysis, setAnalysis] = useState(null);
   const [generatedImage, setGeneratedImage] = useState(null);
   const [dragOver, setDragOver] = useState(false);
-  const [layoutImage, setLayoutImage] = useState(null);
-  const [layoutBase64, setLayoutBase64] = useState(null);
-  const [layoutMediaType, setLayoutMediaType] = useState("image/jpeg");
   const [removeBgEnabled, setRemoveBgEnabled] = useState(true);
   const [useNanaBanana, setUseNanaBanana] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [debugInfo, setDebugInfo] = useState("");
   const fileRef = useRef();
-  const layoutRef = useRef();
 
   const GEMINI_KEY = process.env.NEXT_PUBLIC_GEMINI_KEY;
   const REMOVEBG_KEY = process.env.NEXT_PUBLIC_REMOVEBG_KEY;
@@ -46,17 +42,6 @@ export default function App() {
     reader.onload = (e) => {
       setImageBase64(e.target.result.split(",")[1]);
       setImageMediaType(file.type || "image/jpeg");
-    };
-    reader.readAsDataURL(file);
-  }, []);
-
-  const handleLayoutFile = useCallback((file) => {
-    if (!file || !file.type.startsWith("image/")) return;
-    setLayoutImage(URL.createObjectURL(file));
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      setLayoutBase64(e.target.result.split(",")[1]);
-      setLayoutMediaType(file.type || "image/jpeg");
     };
     reader.readAsDataURL(file);
   }, []);
@@ -94,12 +79,19 @@ export default function App() {
       const ctx = canvas.getContext("2d");
       ctx.fillStyle = "#f5f5f5";
       ctx.fillRect(0, 0, SIZE, SIZE);
-      const maxProductSize = SIZE * 0.20;
+      
+      // 🌟 將時鐘尺寸設定為畫布的 15% 
+      // 這是最適合用來跟「書本」、「桌上型盆栽」進行 1:1 比較的靜物特寫比例
+      const maxProductSize = SIZE * 0.15; 
+      
       const scale = Math.min(maxProductSize / img.width, maxProductSize / img.height);
       const pw = img.width * scale;
       const ph = img.height * scale;
-      const px = (SIZE - pw) / 2;
-      const py = SIZE * 0.15;
+      
+      // 放在畫面中央偏上，預留下方空間給層板和參照物品
+      const px = (SIZE / 2) - (pw / 2);
+      const py = SIZE * 0.25; 
+      
       ctx.drawImage(img, px, py, pw, ph);
       resolve(canvas.toDataURL("image/jpeg", 0.92).split(",")[1]);
     };
@@ -124,30 +116,27 @@ export default function App() {
     return btoa(binary);
   };
 
-  const generateWithNanaBanana = async (imgBase64, mimeType, prompt, layoutB64, layoutMime) => {
-    const reqParts = [];
-    reqParts.push({ inline_data: { mime_type: mimeType, data: imgBase64 } });
-    if (layoutB64) {
-      reqParts.push({ inline_data: { mime_type: layoutMime || "image/jpeg", data: layoutB64 } });
-      reqParts.push({ text: "The first image is the product. The second image is a composition layout reference — follow it strictly for product position and scale. Medium shot, clock clearly visible. The clock should be smaller than any potted plants in the scene. " + prompt + " Generate a photorealistic product scene image." });
-    } else {
-      reqParts.push({ text: "Medium shot, clock clearly visible. The clock should be smaller than any potted plants in the scene. " + prompt + " Generate a photorealistic product scene image." });
-    }
+  const generateWithNanaBanana = async (imageBase64, mimeType, prompt) => {
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=${GEMINI_IMAGE_KEY}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          contents: [{ parts: reqParts }],
+          contents: [{
+            parts: [
+              { inline_data: { mime_type: mimeType, data: imageBase64 } },
+              { text: prompt + " Generate a photorealistic product scene image." }
+            ]
+          }],
           generationConfig: { responseModalities: ["IMAGE", "TEXT"] }
         })
       }
     );
     const data = await res.json();
     if (data.error) throw new Error(`Nano Banana 錯誤：${data.error.message}`);
-    const resParts = data.candidates?.[0]?.content?.parts || [];
-    const imgPart = resParts.find(p => p.inlineData?.mimeType?.startsWith("image/"));
+    const parts = data.candidates?.[0]?.content?.parts || [];
+    const imgPart = parts.find(p => p.inlineData?.mimeType?.startsWith("image/"));
     if (!imgPart) throw new Error("Nano Banana 沒有回傳圖片");
     return `data:${imgPart.inlineData.mimeType};base64,${imgPart.inlineData.data}`;
   };
@@ -165,6 +154,7 @@ export default function App() {
         ? `用戶指定場景：「${SCENES.find(s => s.id === selectedScene)?.label}」（${SCENES.find(s => s.id === selectedScene)?.desc}）。`
         : "請根據商品自動選擇最適合場景。";
 
+      // Step 1: Gemini analyzes product
       const geminiRes = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,
         {
@@ -182,7 +172,7 @@ export default function App() {
   "is_wall_clock": "true或false，判斷是否為掛鐘",
   "matched_scene": "場景名稱（中文）",
   "scene_reason": "選擇原因（10字內）",
-  "prompt": "Keep the product exactly as shown with its original colors, materials and surface texture unchanged. If it is a wall clock, it must be mounted and hanging on a wall in the background, sized realistically relative to the room — a 24x24cm clock should appear as a small decorative element on the wall, roughly the size of a dinner plate compared to the room, with furniture and room elements visible around it to show proper scale. The clock is a background decoration, not the main subject. Place it in [scene description]. Describe the full room with furniture, lighting, atmosphere. Do NOT alter the product appearance. At least 60 words. End with: professional interior photography, high quality, 8k, realistic proportions, wall clock as background element"
+  "prompt": "Keep the product exactly as shown with its original colors, materials and surface texture unchanged. If it is a wall clock, it must be mounted on a wall slightly above a wooden shelf or desk. 🌟 CRITICAL RELATIVE SCALE RULES: 1. If your scene description includes books, you MUST generate books placed on the shelf near the clock, and the books MUST be EXACTLY THE SAME SIZE as the clock. 2. If your scene description includes potted plants, you MUST generate a potted plant on the shelf near the clock, and the plant MUST be VISIBLY LARGER than the clock. Focus on a close-up, intimate still-life vignette. Do NOT generate massive wide rooms. Ensure consistent lighting, natural soft drop shadows, seamless blending, photorealistic materials. Do NOT alter the product appearance. At least 60 words. End with: professional interior still-life photography, close-up vignette, strict object-to-object scale, high quality, 8k"
 }
 ${sceneNote}`
                 }
@@ -210,6 +200,7 @@ ${sceneNote}`
 
       setAnalysis(parsed);
 
+      // Step 2: Auto remove background (if enabled)
       let inputImage;
       const isWallClock = parsed.is_wall_clock === "true";
       if (removeBgEnabled) {
@@ -224,12 +215,15 @@ ${sceneNote}`
           : await compressImage(imageBase64, imageMediaType);
       }
 
+      // Step 4: Generate image
       setStep(STEP.GENERATING);
       let finalImgUrl;
 
       if (useNanaBanana) {
-        finalImgUrl = await generateWithNanaBanana(inputImage, "image/jpeg", parsed.prompt, layoutBase64, layoutMediaType);
+        // Use Gemini Nano Banana
+        finalImgUrl = await generateWithNanaBanana(inputImage, "image/jpeg", parsed.prompt);
       } else {
+        // Use flux-kontext-max
         const replicateRes = await fetch("/api/replicate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -272,6 +266,7 @@ ${sceneNote}`
 
       setGeneratedImage(finalImgUrl);
       setStep(STEP.DONE);
+      // Auto download
       try {
         const isDataUrl = finalImgUrl.startsWith("data:");
         if (isDataUrl) {
@@ -282,8 +277,8 @@ ${sceneNote}`
           a.click();
           document.body.removeChild(a);
         } else {
-          const fetchRes = await fetch(finalImgUrl);
-          const blob = await fetchRes.blob();
+          const res = await fetch(finalImgUrl);
+          const blob = await res.blob();
           const url = URL.createObjectURL(blob);
           const a = document.createElement("a");
           a.href = url;
@@ -348,24 +343,7 @@ ${sceneNote}`
             </div>
 
             <div>
-              <div style={{ fontSize: 10, letterSpacing: 3, opacity: 0.4, marginBottom: 10, textTransform: "uppercase" }}>02 — 構圖參考圖（可略，僅 Nano Banana）</div>
-              <div
-                onClick={() => layoutRef.current.click()}
-                style={{ border: `1.5px dashed #c8bfb0`, borderRadius: 4, minHeight: 100, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", background: "#faf8f5", overflow: "hidden" }}
-              >
-                {layoutImage
-                  ? <img src={layoutImage} alt="layout" style={{ width: "100%", height: 100, objectFit: "contain", padding: 8 }} />
-                  : <div style={{ textAlign: "center", padding: 16 }}>
-                      <div style={{ fontSize: 20, marginBottom: 4 }}>📐</div>
-                      <div style={{ fontSize: 11, opacity: 0.4, lineHeight: 1.6 }}>上傳構圖參考圖<br />決定時鐘位置和大小</div>
-                    </div>
-                }
-              </div>
-              <input ref={layoutRef} type="file" accept="image/*" style={{ display: "none" }} onChange={e => handleLayoutFile(e.target.files[0])} />
-            </div>
-
-            <div>
-              <div style={{ fontSize: 10, letterSpacing: 3, opacity: 0.4, marginBottom: 10, textTransform: "uppercase" }}>03 — 場景風格（可略）</div>
+              <div style={{ fontSize: 10, letterSpacing: 3, opacity: 0.4, marginBottom: 10, textTransform: "uppercase" }}>02 — 場景風格（可略）</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                 {SCENES.map(sc => (
                   <button key={sc.id} onClick={() => setSelectedScene(selectedScene === sc.id ? null : sc.id)} style={{ padding: "7px 13px", border: `1.5px solid ${selectedScene === sc.id ? "#8b7355" : "#c8bfb0"}`, borderRadius: 2, background: selectedScene === sc.id ? "#8b7355" : "transparent", color: selectedScene === sc.id ? "#fff" : "#2c2a27", fontSize: 12, cursor: "pointer", transition: "all 0.15s" }}>
@@ -376,8 +354,20 @@ ${sceneNote}`
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "#faf8f5", border: "1.5px solid #e8e0d5", borderRadius: 2 }}>
-              <div onClick={() => setRemoveBgEnabled(v => !v)} style={{ width: 36, height: 20, borderRadius: 10, background: removeBgEnabled ? "#8b7355" : "#c8bfb0", position: "relative", cursor: "pointer", transition: "all 0.2s" }}>
-                <div style={{ width: 16, height: 16, borderRadius: "50%", background: "#fff", position: "absolute", top: 2, left: removeBgEnabled ? 18 : 2, transition: "all 0.2s" }} />
+              <div
+                onClick={() => setRemoveBgEnabled(v => !v)}
+                style={{
+                  width: 36, height: 20, borderRadius: 10,
+                  background: removeBgEnabled ? "#8b7355" : "#c8bfb0",
+                  position: "relative", cursor: "pointer", transition: "all 0.2s",
+                }}
+              >
+                <div style={{
+                  width: 16, height: 16, borderRadius: "50%", background: "#fff",
+                  position: "absolute", top: 2,
+                  left: removeBgEnabled ? 18 : 2,
+                  transition: "all 0.2s",
+                }} />
               </div>
               <div>
                 <div style={{ fontSize: 11, letterSpacing: 1 }}>✂️ 自動去背</div>
@@ -386,12 +376,24 @@ ${sceneNote}`
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "#faf8f5", border: "1.5px solid #e8e0d5", borderRadius: 2 }}>
-              <div onClick={() => setUseNanaBanana(v => !v)} style={{ width: 36, height: 20, borderRadius: 10, background: useNanaBanana ? "#8b7355" : "#c8bfb0", position: "relative", cursor: "pointer", transition: "all 0.2s" }}>
-                <div style={{ width: 16, height: 16, borderRadius: "50%", background: "#fff", position: "absolute", top: 2, left: useNanaBanana ? 18 : 2, transition: "all 0.2s" }} />
+              <div
+                onClick={() => setUseNanaBanana(v => !v)}
+                style={{
+                  width: 36, height: 20, borderRadius: 10,
+                  background: useNanaBanana ? "#8b7355" : "#c8bfb0",
+                  position: "relative", cursor: "pointer", transition: "all 0.2s",
+                }}
+              >
+                <div style={{
+                  width: 16, height: 16, borderRadius: "50%", background: "#fff",
+                  position: "absolute", top: 2,
+                  left: useNanaBanana ? 18 : 2,
+                  transition: "all 0.2s",
+                }} />
               </div>
               <div>
                 <div style={{ fontSize: 11, letterSpacing: 1 }}>🍌 圖像模型</div>
-                <div style={{ fontSize: 10, opacity: 0.4 }}>{useNanaBanana ? "Gemini Nano Banana 2（便宜）" : "flux-kontext-max（穩定）"}</div>
+                <div style={{ fontSize: 10, opacity: 0.4 }}>{useNanaBanana ? "Gemini Nano Banana（便宜）" : "flux-kontext-max（穩定）"}</div>
               </div>
             </div>
 
@@ -405,7 +407,7 @@ ${sceneNote}`
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <div style={{ fontSize: 10, letterSpacing: 3, opacity: 0.4, textTransform: "uppercase" }}>04 — 生成結果</div>
+            <div style={{ fontSize: 10, letterSpacing: 3, opacity: 0.4, textTransform: "uppercase" }}>03 — 生成結果</div>
 
             {step === STEP.IDLE && (
               <div style={{ background: "#faf8f5", border: "1.5px solid #e8e0d5", borderRadius: 4, minHeight: 400, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#c8bfb0" }}>
